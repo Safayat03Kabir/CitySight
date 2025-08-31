@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Monitoring() {
   const [selectedTimeframe, setSelectedTimeframe] = useState("realtime");
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
 
   const monitoringStations = [
     {
@@ -93,17 +98,23 @@ export default function Monitoring() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-10 left-10 w-72 h-72 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-10 right-10 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-4">Environmental Monitoring</h1>
+        <div className={`mb-8 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+          <h1 className="text-3xl font-bold text-gray-800 mb-4 animate-fadeInUp">Environmental Monitoring</h1>
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium text-gray-700">Update Frequency:</span>
             <select 
               value={selectedTimeframe} 
               onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 hover:shadow-md"
             >
               <option value="realtime">Real-time</option>
               <option value="5min">Every 5 minutes</option>
@@ -114,23 +125,23 @@ export default function Monitoring() {
         </div>
 
         {/* Alerts Section */}
-        <div className="mb-8">
+        <div className={`mb-8 transition-all duration-1000 delay-300 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Active Alerts</h2>
           <div className="space-y-3">
-            {alerts.map((alert) => (
-              <div key={alert.id} className={`border-l-4 p-4 rounded-r-lg ${getAlertColor(alert.type)}`}>
+            {alerts.map((alert, index) => (
+              <div key={alert.id} className={`border-l-4 p-4 rounded-r-lg ${getAlertColor(alert.type)} transform hover:scale-105 transition-all duration-300 hover:shadow-lg`} style={{animationDelay: `${index * 100}ms`}}>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-gray-800">{alert.type}</span>
-                      <span className="text-xs px-2 py-1 bg-white rounded-full border">
+                      <span className="text-xs px-2 py-1 bg-white rounded-full border animate-pulse">
                         {alert.status}
                       </span>
                     </div>
                     <p className="text-gray-700">{alert.message}</p>
                     <p className="text-sm text-gray-500 mt-1">{alert.timestamp}</p>
                   </div>
-                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 hover:scale-105 transform">
                     View Details
                   </button>
                 </div>

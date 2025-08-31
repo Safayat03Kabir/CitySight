@@ -48,27 +48,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div>
                 <h4 className="font-semibold mb-4">Features</h4>
                 <ul className="space-y-2 text-sm opacity-90">
-                  <li>Environmental Monitoring</li>
-                  <li>Urban Growth Analysis</li>
-                  <li>Climate Risk Assessment</li>
-                  <li>Satellite Data Integration</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Environmental Monitoring</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Urban Growth Analysis</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Climate Risk Assessment</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Satellite Data Integration</li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-semibold mb-4">Resources</h4>
                 <ul className="space-y-2 text-sm opacity-90">
-                  <li>Documentation</li>
-                  <li>API Reference</li>
-                  <li>Case Studies</li>
-                  <li>Support</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Documentation</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">API Reference</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Case Studies</li>
+                  <li className="hover:text-green-200 transition-colors cursor-pointer">Support</li>
                 </ul>
               </div>
               <div>
                 <h4 className="font-semibold mb-4">Contact</h4>
                 <ul className="space-y-2 text-sm opacity-90">
-                  <li>sales@citysight.com</li>
-                  <li>support@citysight.com</li>
-                  <li>+1 (555) 123-4567</li>
+                  <li className="hover:text-green-200 transition-colors">sales@citysight.com</li>
+                  <li className="hover:text-green-200 transition-colors">support@citysight.com</li>
+                  <li className="hover:text-green-200 transition-colors">+1 (555) 123-4567</li>
                 </ul>
               </div>
             </div>

@@ -1,6 +1,13 @@
 "use client";
 
+import { useState, useEffect } from "react";
+
 export default function Features() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
   const features = [
     {
       title: "Real-time Environmental Monitoring",
@@ -95,11 +102,18 @@ export default function Features() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 py-20 px-6 md:px-20">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-20 px-6 md:px-20 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-10 right-10 w-72 h-72 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-10 left-10 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse animation-delay-4000"></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="text-center mb-16">
-          <h1 className="text-4xl font-bold text-gray-800 mb-6">
+        <div className={`text-center mb-16 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+          <h1 className="text-4xl font-bold text-gray-800 mb-6 animate-fadeInUp">
             CitySight Features & Capabilities
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
@@ -108,18 +122,18 @@ export default function Features() {
         </div>
 
         {/* Core Features */}
-        <div className="mb-20">
+        <div className={`mb-20 transition-all duration-1000 delay-300 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Core Features</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, index) => (
-              <div key={index} className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow duration-300">
-                <div className="text-4xl mb-4">{feature.icon}</div>
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">{feature.title}</h3>
+              <div key={index} className="bg-white rounded-xl shadow-lg p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300 group border-t-4 border-green-500" style={{animationDelay: `${index * 100}ms`}}>
+                <div className="text-4xl mb-4 group-hover:animate-bounce">{feature.icon}</div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-4 group-hover:text-green-600 transition-colors duration-300">{feature.title}</h3>
                 <p className="text-gray-600 mb-6">{feature.description}</p>
                 <ul className="space-y-2">
                   {feature.benefits.map((benefit, idx) => (
                     <li key={idx} className="flex items-start">
-                      <span className="text-green-500 mr-2">✓</span>
+                      <span className="text-green-500 mr-2 animate-pulse">✓</span>
                       <span className="text-sm text-gray-700">{benefit}</span>
                     </li>
                   ))}
