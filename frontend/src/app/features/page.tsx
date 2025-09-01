@@ -102,12 +102,32 @@ export default function Features() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-20 px-6 md:px-20 relative overflow-hidden">
-      {/* Animated background elements */}
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-sky-50 py-20 px-6 md:px-20 relative overflow-hidden">
+      {/* Enhanced Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-10 right-10 w-72 h-72 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-10 left-10 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse animation-delay-4000"></div>
+        {/* Floating feature elements */}
+        <div className="absolute top-20 left-16 text-6xl animate-float opacity-60">⭐</div>
+        <div className="absolute top-36 right-20 text-4xl animate-sway opacity-50">🚀</div>
+        <div className="absolute bottom-36 left-28 text-5xl animate-wave opacity-55">🔧</div>
+        <div className="absolute top-68 left-1/4 text-3xl animate-twinkle opacity-45">💡</div>
+        <div className="absolute bottom-52 right-32 text-5xl animate-spiral opacity-50">🎯</div>
+        <div className="absolute top-92 right-1/3 text-4xl animate-zigzag opacity-40">⚡</div>
+        <div className="absolute bottom-44 left-1/2 text-6xl animate-heartbeat opacity-35">💎</div>
+        <div className="absolute top-56 left-3/4 text-3xl animate-float opacity-60">🛰️</div>
+        <div className="absolute bottom-68 right-24 text-4xl animate-sway opacity-45">🌟</div>
+        <div className="absolute top-80 left-16 text-5xl animate-wave opacity-50">🎨</div>
+        
+        {/* Geometric shapes for features */}
+        <div className="absolute top-32 right-40 w-16 h-16 bg-teal-200 rounded-lg transform rotate-45 animate-float opacity-30"></div>
+        <div className="absolute bottom-48 left-40 w-20 h-20 bg-sky-200 rounded-full animate-sway opacity-25"></div>
+        <div className="absolute top-64 right-16 w-12 h-12 bg-emerald-200 rounded-full animate-twinkle opacity-35"></div>
+        <div className="absolute bottom-32 right-1/4 w-14 h-14 bg-cyan-200 transform rotate-12 animate-spiral opacity-30"></div>
+        <div className="absolute top-88 left-1/3 w-18 h-18 bg-teal-300 rounded-lg animate-zigzag opacity-25"></div>
+        
+        {/* Wave patterns */}
+        <div className="absolute top-10 right-10 w-72 h-72 bg-teal-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-10 left-10 w-80 h-80 bg-sky-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-200 rounded-full mix-blend-multiply filter blur-xl opacity-10 animate-pulse animation-delay-4000"></div>
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
@@ -140,35 +160,6 @@ export default function Features() {
                 </ul>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* NASA Data Sources */}
-        <div className="mb-20">
-          <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">NASA Data Sources</h2>
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="text-center">
-                <div className="text-3xl mb-2">🛰️</div>
-                <h4 className="font-semibold text-gray-800 mb-2">Landsat</h4>
-                <p className="text-sm text-gray-600">Land surface imaging and change detection</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl mb-2">🌍</div>
-                <h4 className="font-semibold text-gray-800 mb-2">MODIS</h4>
-                <p className="text-sm text-gray-600">Environmental monitoring and climate data</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl mb-2">🌊</div>
-                <h4 className="font-semibold text-gray-800 mb-2">Sentinel</h4>
-                <p className="text-sm text-gray-600">High-resolution Earth observation</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl mb-2">⚡</div>
-                <h4 className="font-semibold text-gray-800 mb-2">GPM</h4>
-                <p className="text-sm text-gray-600">Precipitation and weather patterns</p>
-              </div>
-            </div>
           </div>
         </div>
 

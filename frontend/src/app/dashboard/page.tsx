@@ -24,11 +24,29 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6 relative overflow-hidden">
-      {/* Animated background elements */}
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-blue-50 p-6 relative overflow-hidden">
+      {/* Enhanced animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 right-20 w-64 h-64 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-20 left-20 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        <div className="absolute -top-20 -left-20 w-96 h-96 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"></div>
+        <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-br from-purple-300 to-pink-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse animation-delay-4000"></div>
+        
+        {/* Floating geometric shapes for dashboard */}
+        <div className="absolute top-20 left-1/4 w-4 h-4 bg-emerald-400 rounded-full animate-bounce-gentle opacity-60"></div>
+        <div className="absolute top-1/3 right-1/4 w-6 h-6 bg-cyan-400 rounded-full animate-spiral animation-delay-1000 opacity-60"></div>
+        <div className="absolute bottom-1/3 left-1/3 w-3 h-3 bg-purple-400 rounded-full animate-twinkle animation-delay-2000 opacity-60"></div>
+        <div className="absolute bottom-20 right-1/3 w-5 h-5 bg-pink-400 rounded-full animate-heartbeat animation-delay-3000 opacity-60"></div>
+        
+        {/* Chart-like elements for dashboard theme */}
+        <div className="absolute top-24 right-20 text-green-300 text-2xl animate-twinkle">📊</div>
+        <div className="absolute top-40 left-32 text-blue-400 text-lg animate-twinkle animation-delay-1000">📈</div>
+        <div className="absolute bottom-32 right-24 text-purple-300 text-xl animate-twinkle animation-delay-2000">💹</div>
+        <div className="absolute bottom-16 left-16 text-emerald-400 text-lg animate-twinkle animation-delay-3000">🗂️</div>
+        
+        {/* Data visualization waves */}
+        <div className="absolute top-32 right-16 w-8 h-32 bg-gradient-to-b from-emerald-400 to-green-500 rounded-full opacity-40 animate-wave animation-delay-1000 transform rotate-12"></div>
+        <div className="absolute top-64 left-20 w-6 h-24 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-full opacity-40 animate-zigzag animation-delay-2000 transform -rotate-12"></div>
+        <div className="absolute bottom-40 right-32 w-10 h-28 bg-gradient-to-b from-purple-400 to-pink-500 rounded-full opacity-40 animate-sway animation-delay-3000 transform rotate-6"></div>
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">

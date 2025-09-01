@@ -127,11 +127,32 @@ export default function Planning() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 p-6 relative overflow-hidden">
-      {/* Animated background elements */}
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-sky-50 p-6 relative overflow-hidden">
+      {/* Enhanced Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-green-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        {/* Floating planning elements */}
+        <div className="absolute top-16 left-20 text-6xl animate-float opacity-60">🏗️</div>
+        <div className="absolute top-40 right-16 text-4xl animate-sway opacity-50">🏙️</div>
+        <div className="absolute bottom-32 left-24 text-5xl animate-wave opacity-55">📐</div>
+        <div className="absolute top-64 left-1/4 text-3xl animate-twinkle opacity-45">🗺️</div>
+        <div className="absolute bottom-56 right-28 text-5xl animate-spiral opacity-50">🌱</div>
+        <div className="absolute top-88 right-1/3 text-4xl animate-zigzag opacity-40">⚙️</div>
+        <div className="absolute bottom-40 left-1/2 text-6xl animate-heartbeat opacity-35">🏡</div>
+        <div className="absolute top-52 left-3/4 text-3xl animate-float opacity-60">📊</div>
+        <div className="absolute bottom-72 right-20 text-4xl animate-sway opacity-45">🌳</div>
+        <div className="absolute top-76 left-12 text-5xl animate-wave opacity-50">🚇</div>
+        
+        {/* Geometric shapes for planning */}
+        <div className="absolute top-28 right-36 w-16 h-16 bg-teal-200 rounded-lg transform rotate-45 animate-float opacity-30"></div>
+        <div className="absolute bottom-44 left-36 w-20 h-20 bg-sky-200 rounded-full animate-sway opacity-25"></div>
+        <div className="absolute top-60 right-12 w-12 h-12 bg-emerald-200 rounded-full animate-twinkle opacity-35"></div>
+        <div className="absolute bottom-28 right-1/4 w-14 h-14 bg-cyan-200 transform rotate-12 animate-spiral opacity-30"></div>
+        <div className="absolute top-84 left-1/3 w-18 h-18 bg-teal-300 rounded-lg animate-zigzag opacity-25"></div>
+        
+        {/* Wave patterns */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-teal-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-sky-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        <div className="absolute top-1/3 left-1/3 w-72 h-72 bg-emerald-200 rounded-full mix-blend-multiply filter blur-xl opacity-15 animate-pulse animation-delay-4000"></div>
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
