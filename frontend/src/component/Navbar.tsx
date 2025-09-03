@@ -1,4 +1,6 @@
+"use client";
 import Link from "next/link";
+import CitySight3DLogo from "./CitySight3DLogo";
 
 export default function Navbar() {
   return (
@@ -14,6 +16,7 @@ export default function Navbar() {
           <span className="text-teal-300 hover:text-teal-200 transition-colors duration-300 drop-shadow-lg">City</span>
           <span className="text-sky-300 hover:text-sky-200 transition-colors duration-300 drop-shadow-lg">Sight</span>
         </h1>
+         {/* <CitySight3DLogo /> */}
       </div>
       
       <ul className="flex gap-8 relative z-10">
