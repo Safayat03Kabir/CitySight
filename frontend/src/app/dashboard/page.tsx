@@ -128,8 +128,6 @@
 import { useState, useEffect } from "react";
 import EnvironmentalMetrics from "../../component/EnvironmentalMetrics";
 import UrbanGrowthAnalysis from "../../component/UrbanGrowthAnalysis";
-import ClimateRiskAssessment from "../../component/ClimateRiskAssessment";
-import SatelliteDataViewer from "../../component/SatelliteDataViewer";
 
 export default function Dashboard() {
   const [selectedCity, setSelectedCity] = useState("New York");
@@ -207,19 +205,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Climate Risk Assessment */}
-          <div className={`transition-all duration-1000 delay-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-            <div className="transform hover:scale-[1.01] transition-all duration-300">
-              <ClimateRiskAssessment city={selectedCity} />
-            </div>
-          </div>
 
-          {/* Satellite Data Viewer */}
-          <div className={`transition-all duration-1000 delay-600 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-            <div className="transform hover:scale-[1.01] transition-all duration-300">
-              <SatelliteDataViewer city={selectedCity} />
-            </div>
-          </div>
+
         </div>
       </div>
     </div>

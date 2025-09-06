@@ -347,60 +347,30 @@ export default function UrbanGrowthAnalysis({ city, timeRange }: UrbanGrowthAnal
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Land Use Distribution</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.landUseChart}></canvas>
           </div>
         </div>
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Urban Growth Trend</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.growthTrendChart}></canvas>
           </div>
         </div>
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Infrastructure Readiness</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.infrastructureChart}></canvas>
           </div>
         </div>
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Population Projection</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.populationChart}></canvas>
           </div>
         </div>
       </div>
 
-      {/* Growth Projections */}
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-100">
-        <h4 className="text-sm font-medium text-green-800 mb-4">Growth Insights & Recommendations</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white/50 rounded-lg p-3 border border-green-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📈</span>
-              <span className="text-sm text-green-800">
-                Population density projected: {mockData.populationDensity.projection} people/km² by 2030
-              </span>
-            </div>
-          </div>
-          <div className="bg-white/50 rounded-lg p-3 border border-green-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🌳</span>
-              <span className="text-sm text-green-800">
-                Recommended: Increase green space by 5%
-              </span>
-            </div>
-          </div>
-          <div className="bg-white/50 rounded-lg p-3 border border-green-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🚊</span>
-              <span className="text-sm text-green-800">
-                Priority: Enhance public transit infrastructure
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

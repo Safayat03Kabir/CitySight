@@ -176,6 +176,14 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
     vegetationChart: useRef<HTMLCanvasElement | null>(null)
   };
 
+  // Store chart instances for proper cleanup
+  const chartInstances = useRef<{ [key: string]: any }>({
+    airQuality: null,
+    trends: null,
+    emissionsChart: null,
+    vegetationChart: null
+  });
+
   // Mock data
   const mockData = {
     airQuality: {
@@ -236,20 +244,32 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
   useEffect(() => {
     initializeCharts();
     return () => {
-      // Cleanup charts
-      Object.values(chartRefs).forEach(ref => {
-        const chart = ref.current?.getContext('2d')?.canvas?.__chartjs;
-        if (chart) chart.destroy();
+      // Cleanup chart instances properly
+      Object.values(chartInstances.current).forEach(chartInstance => {
+        if (chartInstance) {
+          chartInstance.destroy();
+        }
+      });
+      // Reset all instances to null
+      Object.keys(chartInstances.current).forEach(key => {
+        chartInstances.current[key] = null;
       });
     };
   }, [city, timeRange]);
 
   const initializeCharts = () => {
+    // Destroy existing charts before creating new ones
+    Object.values(chartInstances.current).forEach(chartInstance => {
+      if (chartInstance) {
+        chartInstance.destroy();
+      }
+    });
+
     // Air Quality Gauge Chart
     if (chartRefs.airQuality.current) {
       const ctx = chartRefs.airQuality.current.getContext('2d');
       if (ctx) {
-        new ChartJS(ctx, {
+        chartInstances.current.airQuality = new ChartJS(ctx, {
           type: 'doughnut',
           data: {
             labels: ['Air Quality', 'Remaining'],
@@ -279,7 +299,7 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
     if (chartRefs.trends.current) {
       const ctx = chartRefs.trends.current.getContext('2d');
       if (ctx) {
-        new ChartJS(ctx, {
+        chartInstances.current.trends = new ChartJS(ctx, {
           type: 'line',
           data: {
             labels: trendData.labels,
@@ -331,7 +351,7 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
     if (chartRefs.emissionsChart.current) {
       const ctx = chartRefs.emissionsChart.current.getContext('2d');
       if (ctx) {
-        new ChartJS(ctx, {
+        chartInstances.current.emissionsChart = new ChartJS(ctx, {
           type: 'bar',
           data: {
             labels: trendData.labels,
@@ -363,7 +383,7 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
     if (chartRefs.vegetationChart.current) {
       const ctx = chartRefs.vegetationChart.current.getContext('2d');
       if (ctx) {
-        new ChartJS(ctx, {
+        chartInstances.current.vegetationChart = new ChartJS(ctx, {
           type: 'radar',
           data: {
             labels: ['Coverage', 'Density', 'Health', 'Growth', 'Diversity'],
@@ -494,49 +514,31 @@ export default function EnvironmentalMetrics({ city, timeRange }: EnvironmentalM
         {/* Charts Section */}
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Air Quality Trends</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.trends}></canvas>
           </div>
         </div>
 
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Emissions Analysis</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.emissionsChart}></canvas>
           </div>
         </div>
 
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Current Air Quality</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.airQuality}></canvas>
           </div>
         </div>
 
         <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm">
           <h3 className="text-sm font-medium text-gray-700 mb-4">Vegetation Analysis</h3>
-          <div className="h-64">
+          <div className="h-64 flex items-center justify-center">
             <canvas ref={chartRefs.vegetationChart}></canvas>
           </div>
         </div>
-      </div>
-
-      <div className="bg-blue-50 rounded-xl p-6">
-        <h4 className="text-sm font-medium text-blue-800 mb-3">Key Insights</h4>
-        <ul className="text-sm text-blue-700 space-y-2">
-          <li className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-            Air quality has improved due to reduced industrial emissions
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-            Urban vegetation coverage is stable with new park developments
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-            Heat island effect requires attention in downtown areas
-          </li>
-        </ul>
       </div>
     </div>
   );
