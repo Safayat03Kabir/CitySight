@@ -1,83 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import MonitoringMapComponent from "../../component/MonitoringMapComponent";
 
 export default function Monitoring() {
   const [selectedTimeframe, setSelectedTimeframe] = useState("realtime");
   const [isVisible, setIsVisible] = useState(false);
+  const [selectedStation, setSelectedStation] = useState<any>(null);
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
 
-  const monitoringStations = [
-    {
-      id: 1,
-      name: "Downtown Station",
-      type: "Air Quality",
-      status: "Online",
-      lastUpdate: "2 min ago",
-      coordinates: "40.7128, -74.0060",
-      readings: {
-        pm25: 15.2,
-        pm10: 23.4,
-        no2: 25.8,
-        o3: 42.1
-      }
-    },
-    {
-      id: 2,
-      name: "Central Park",
-      type: "Environmental",
-      status: "Online",
-      lastUpdate: "1 min ago",
-      coordinates: "40.7851, -73.9683",
-      readings: {
-        temperature: 24.5,
-        humidity: 68,
-        soilMoisture: 45.2,
-        uv: 6.8
-      }
-    },
-    {
-      id: 3,
-      name: "Industrial Zone",
-      type: "Emissions",
-      status: "Warning",
-      lastUpdate: "5 min ago",
-      coordinates: "40.6892, -74.0445",
-      readings: {
-        co2: 420.5,
-        ch4: 1.95,
-        no2: 68.3,
-        so2: 12.4
-      }
-    }
+  const monitoringStations: any[] = [
+    // Removed hardcoded stations - stations should come from real data source
   ];
 
-  const alerts = [
-    {
-      id: 1,
-      type: "High Priority",
-      message: "Air quality deteriorating in Industrial Zone",
-      timestamp: "10 minutes ago",
-      status: "Active"
-    },
-    {
-      id: 2,
-      type: "Medium Priority",
-      message: "Urban heat island effect detected in downtown",
-      timestamp: "2 hours ago",
-      status: "Investigating"
-    },
-    {
-      id: 3,
-      type: "Low Priority",
-      message: "Vegetation stress in eastern districts",
-      timestamp: "1 day ago",
-      status: "Monitoring"
-    }
-  ];
+
+  const handleStationClick = (station: any) => {
+    setSelectedStation(station);
+    console.log('Selected station:', station);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -127,48 +70,13 @@ export default function Monitoring() {
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        {/* Header */}
-        <div className={`mb-8 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-          <h1 className="text-3xl font-bold text-gray-800 mb-4 animate-fadeInUp">Environmental Monitoring</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-700">Update Frequency:</span>
-            <select 
-              value={selectedTimeframe} 
-              onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 hover:shadow-md"
-            >
-              <option value="realtime">Real-time</option>
-              <option value="5min">Every 5 minutes</option>
-              <option value="hourly">Hourly</option>
-              <option value="daily">Daily</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Alerts Section */}
-        <div className={`mb-8 transition-all duration-1000 delay-300 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Active Alerts</h2>
-          <div className="space-y-3">
-            {alerts.map((alert, index) => (
-              <div key={alert.id} className={`border-l-4 p-4 rounded-r-lg ${getAlertColor(alert.type)} transform hover:scale-105 transition-all duration-300 hover:shadow-lg`} style={{animationDelay: `${index * 100}ms`}}>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-gray-800">{alert.type}</span>
-                      <span className="text-xs px-2 py-1 bg-white rounded-full border animate-pulse">
-                        {alert.status}
-                      </span>
-                    </div>
-                    <p className="text-gray-700">{alert.message}</p>
-                    <p className="text-sm text-gray-500 mt-1">{alert.timestamp}</p>
-                  </div>
-                  <button className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 hover:scale-105 transform">
-                    View Details
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Monitoring Map */}
+        <div className={`mb-8 transition-all duration-1000 delay-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+          <MonitoringMapComponent 
+            stations={monitoringStations}
+            onStationClick={handleStationClick}
+            selectedStation={selectedStation}
+          />
         </div>
 
         {/* Monitoring Stations */}
@@ -176,7 +84,13 @@ export default function Monitoring() {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Monitoring Stations</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {monitoringStations.map((station) => (
-              <div key={station.id} className="bg-white rounded-lg shadow-md p-6">
+              <div 
+                key={station.id} 
+                className={`bg-white rounded-lg shadow-md p-6 cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:scale-105 ${
+                  selectedStation?.id === station.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                }`}
+                onClick={() => handleStationClick(station)}
+              >
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800">{station.name}</h3>
@@ -189,13 +103,13 @@ export default function Monitoring() {
                 </div>
 
                 <div className="space-y-3">
-                  {Object.entries(station.readings).map(([key, value]) => (
+                  {Object.entries(station.readings).filter(([_, value]) => value !== undefined).map(([key, value]) => (
                     <div key={key} className="flex justify-between items-center">
                       <span className="text-sm text-gray-600 capitalize">
                         {key.replace(/([A-Z])/g, ' $1').trim()}
                       </span>
                       <span className="font-medium text-gray-800">
-                        {value} {getUnit(key)}
+                        {String(value)} {getUnit(key)}
                       </span>
                     </div>
                   ))}
@@ -203,56 +117,12 @@ export default function Monitoring() {
 
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <p className="text-xs text-gray-500">Last updated: {station.lastUpdate}</p>
+                  {selectedStation?.id === station.id && (
+                    <p className="text-xs text-blue-600 mt-1">📍 Selected on map</p>
+                  )}
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Real-time Charts Section */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Real-time Trends</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">Air Quality Index</h3>
-              <div className="bg-gradient-to-r from-green-100 to-yellow-100 h-32 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-gray-800">78</div>
-                  <div className="text-sm text-gray-600">Moderate</div>
-                  <div className="text-xs text-green-600">↗️ Improving</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">Temperature Monitoring</h3>
-              <div className="bg-gradient-to-r from-blue-100 to-red-100 h-32 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-gray-800">24.5°C</div>
-                  <div className="text-sm text-gray-600">Current Temp</div>
-                  <div className="text-xs text-blue-600">➡️ Stable</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-md transition-colors">
-              Download Report
-            </button>
-            <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-md transition-colors">
-              Set Alert Threshold
-            </button>
-            <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-md transition-colors">
-              View Historical Data
-            </button>
-            <button className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-md transition-colors">
-              Configure Stations
-            </button>
           </div>
         </div>
       </div>
