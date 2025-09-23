@@ -223,6 +223,10 @@ class GEEService {
       const heatIslandIntensity = urbanMeanResult && ruralMeanResult ? 
         (urbanMeanResult - ruralMeanResult).toFixed(2) : null;
 
+      // --- Compute yearly time series for the AOI ---
+      console.log('📊 Computing yearly time series...');
+      const timeSeries = await this.computeYearlyTimeSeries(geometry, startDate, endDate, maskLandsatQA, toCelsiusL8, inHotMonths);
+
       return {
         success: true,
         imageUrl,
@@ -255,7 +259,8 @@ class GEEService {
             4: 'Extreme (>40°C)'
           },
           visualizationParams: zoneVis
-        }
+        },
+        timeSeries: timeSeries
       };
 
     } catch (error) {
@@ -528,6 +533,134 @@ class GEEService {
     }
 
     return await this.getPopulationData(cityBounds, year);
+  }
+
+  /**
+   * Compute yearly time series of AOI mean Land Surface Temperature
+   * @param {Object} geometry - AOI geometry
+   * @param {string} startDate - Start date in YYYY-MM-DD format
+   * @param {string} endDate - End date in YYYY-MM-DD format
+   * @param {Function} maskLandsatQA - QA masking function
+   * @param {Function} toCelsiusL8 - Temperature conversion function
+   * @param {Object} inHotMonths - Hot season filter
+   * @returns {Promise<Array>} - Array of yearly temperature points
+   */
+  async computeYearlyTimeSeries(geometry, startDate, endDate, maskLandsatQA, toCelsiusL8, inHotMonths) {
+    try {
+      // Determine the year range for time series
+      const endYear = parseInt(endDate.split('-')[0]);
+      const startYear = 2013; // Earliest Landsat 8 data
+      
+      console.log(`📈 Computing time series from ${startYear} to ${endYear}`);
+      
+      const timeSeries = [];
+      
+      // Process each year individually
+      for (let year = startYear; year <= endYear; year++) {
+        console.log(`📅 Processing year ${year}...`);
+        
+        try {
+          // Create year-specific date range (hot season: April-June)
+          const yearStart = `${year}-01-01`;
+          const yearEnd = `${year}-12-31`;
+          
+          // --- Landsat 8/9 Collection 2 Level 2 (merge collections) ---
+          const l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+              .filterBounds(geometry)
+              .filterDate(yearStart, yearEnd)
+              .filter(ee.Filter.lt('CLOUD_COVER', 20))
+              .select(['ST_B10','QA_PIXEL'])
+              .map(maskLandsatQA)
+              .map(toCelsiusL8);
+              
+          const l9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+              .filterBounds(geometry)
+              .filterDate(yearStart, yearEnd)
+              .filter(ee.Filter.lt('CLOUD_COVER', 20))
+              .select(['ST_B10','QA_PIXEL'])
+              .map(maskLandsatQA)
+              .map(toCelsiusL8);
+              
+          const yearLandsat = l8.merge(l9);
+          
+          // Filter to hot season (same as main analysis)
+          const hotSeasonCollection = yearLandsat.filter(inHotMonths);
+          
+          // Check if there's any data for this year
+          const yearCollectionSize = await new Promise((resolve, reject) => {
+            hotSeasonCollection.size().getInfo((size, error) => {
+              if (error) reject(error);
+              else resolve(size);
+            });
+          });
+          
+          if (yearCollectionSize === 0) {
+            // No data available for this year
+            timeSeries.push({
+              year: year,
+              meanC: null,
+              sampleCount: 0,
+              hasData: false
+            });
+            console.log(`❌ No data available for year ${year}`);
+            continue;
+          }
+          
+          // Create hot season composite for this year
+          const yearHotComposite = hotSeasonCollection.median().clip(geometry);
+          
+          // Calculate AOI mean temperature
+          const yearMeanResult = await new Promise((resolve, reject) => {
+            yearHotComposite.select('LST').reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geometry,
+              scale: 30,
+              maxPixels: 1e9
+            }).getInfo((result, error) => {
+              if (error) reject(error);
+              else resolve(result.LST || null);
+            });
+          });
+          
+          if (yearMeanResult !== null && !isNaN(yearMeanResult)) {
+            timeSeries.push({
+              year: year,
+              meanC: parseFloat(yearMeanResult.toFixed(2)),
+              sampleCount: yearCollectionSize,
+              hasData: true
+            });
+            console.log(`✅ Year ${year}: ${yearMeanResult.toFixed(2)}°C (${yearCollectionSize} images)`);
+          } else {
+            // Data exists but computation failed (e.g., all masked pixels)
+            timeSeries.push({
+              year: year,
+              meanC: null,
+              sampleCount: yearCollectionSize,
+              hasData: false
+            });
+            console.log(`⚠️ Year ${year}: No valid pixels after masking`);
+          }
+          
+        } catch (yearError) {
+          console.warn(`⚠️ Error processing year ${year}:`, yearError.message);
+          // Add null entry for failed year
+          timeSeries.push({
+            year: year,
+            meanC: null,
+            sampleCount: 0,
+            hasData: false
+          });
+        }
+      }
+      
+      console.log(`📈 Time series computation complete: ${timeSeries.filter(p => p.hasData).length}/${timeSeries.length} years with data`);
+      return timeSeries;
+      
+    } catch (error) {
+      console.error('❌ Error computing time series:', error);
+      // Return empty array on failure to not break main response
+      return [];
+    }
   }
 
   /**
