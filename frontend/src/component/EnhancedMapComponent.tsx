@@ -69,6 +69,7 @@ const EnhancedMapComponent = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRequestBounds, setLastRequestBounds] = useState<MapBounds | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number>(2024);
 
   useEffect(() => {
     let mounted = true;
@@ -175,6 +176,24 @@ const EnhancedMapComponent = () => {
   }, []); // Empty dependency array to run only once
 
   /**
+   * Get start and end dates based on selected year
+   */
+  const getDateRange = () => {
+    const startDate = `${selectedYear}-01-01`;
+    const endDate = `${selectedYear}-08-01`;
+    return { startDate, endDate };
+  };
+
+  /**
+   * Handle year slider change
+   */
+  const handleYearChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const year = parseInt(event.target.value);
+    setSelectedYear(year);
+    console.log(`📅 Year changed to: ${year}`);
+  };
+
+  /**
    * Fetch heat data for current map bounds
    */
   const fetchHeatDataForCurrentBounds = async () => {
@@ -198,9 +217,8 @@ const EnhancedMapComponent = () => {
       console.log('🌡️ Fetching heat data for current bounds:', mapBounds);
       setLastRequestBounds(mapBounds);
 
-      // Use exact format as specified
-      const startDate = "2024-01-01";
-      const endDate = "2024-08-01";
+      // Use selected year for date range
+      const { startDate, endDate } = getDateRange();
 
       const response = await HeatService.getHeatData(mapBounds, startDate, endDate) as HeatApiResponse;
 
@@ -231,9 +249,8 @@ const EnhancedMapComponent = () => {
     try {
       console.log('🏙️ Fetching heat data for city:', cityName);
 
-      // Use exact format as specified
-      const startDate = "2024-01-01";
-      const endDate = "2024-08-01";
+      // Use selected year for date range
+      const { startDate, endDate } = getDateRange();
 
       const response = await HeatService.getCityHeatData(cityName, startDate, endDate) as HeatApiResponse;
 
@@ -339,9 +356,83 @@ const EnhancedMapComponent = () => {
 
   return (
     <div className="w-full">
+      {/* Custom CSS for slider */}
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider::-moz-range-thumb {
+          height: 20px;
+          width: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .slider:focus {
+          outline: none;
+        }
+        
+        .slider:focus::-webkit-slider-thumb {
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+      `}</style>
+      
       {/* Control Panel */}
       <div className="mb-6 p-6 bg-white rounded-lg shadow-lg">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Heat Island Analysis</h3>
+        
+        {/* Year Slider */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-3">
+            <label htmlFor="year-slider" className="text-sm font-medium text-gray-700">
+              📅 Select Analysis Year
+            </label>
+            <div className="text-lg font-semibold text-blue-600">
+              {selectedYear}
+            </div>
+          </div>
+          
+          <div className="relative">
+            <input
+              id="year-slider"
+              type="range"
+              min="2000"
+              max="2024"
+              value={selectedYear}
+              onChange={handleYearChange}
+              className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer slider"
+              style={{
+                background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((selectedYear - 2000) / 24) * 100}%, #e5e7eb ${((selectedYear - 2000) / 24) * 100}%, #e5e7eb 100%)`
+              }}
+            />
+            
+            {/* Year markers */}
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>2000</span>
+              <span>2005</span>
+              <span>2010</span>
+              <span>2015</span>
+              <span>2020</span>
+              <span>2024</span>
+            </div>
+          </div>
+          
+          {/* Date range display */}
+          <div className="mt-3 text-sm text-gray-600">
+            <span className="font-medium">Analysis Period:</span> {getDateRange().startDate} to {getDateRange().endDate}
+          </div>
+        </div>
         
         <div className="flex flex-wrap gap-3 mb-4">
           <button
@@ -349,7 +440,7 @@ const EnhancedMapComponent = () => {
             disabled={loading || !map}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? '🔄 Loading...' : '🔍 Show Heat Date'}
+            {loading ? '🔄 Loading...' : `🔍 Show Heat Data(${selectedYear})`}
           </button>
           
           <button
@@ -357,7 +448,7 @@ const EnhancedMapComponent = () => {
             disabled={loading}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            🏙️ New York
+            🏙️ New York ({selectedYear})
           </button>
           
           <button
@@ -365,7 +456,7 @@ const EnhancedMapComponent = () => {
             disabled={loading}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            🌴 Los Angeles
+            🌴 Los Angeles ({selectedYear})
           </button>
           
           <button
@@ -373,7 +464,7 @@ const EnhancedMapComponent = () => {
             disabled={loading}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            🌬️ Chicago
+            🌬️ Chicago ({selectedYear})
           </button>
           
           <button
@@ -414,7 +505,7 @@ const EnhancedMapComponent = () => {
         <div 
           id="heat-map" 
           key="heat-map-container"
-          className="w-full h-[600px] rounded-lg border border-gray-300 shadow-lg"
+          className="mx-[250px] w-[1400px] h-[800px] rounded-lg border border-gray-300 shadow-lg"
         />
       </div>
 
