@@ -308,6 +308,229 @@ class GEEService {
   }
 
   /**
+   * Fetch Population Density data from NASA SEDAC GPW for demographic analysis
+   * @param {Object} bounds - Bounding box coordinates {north, south, east, west}
+   * @param {number} year - Year for population data (2000, 2005, 2010, 2015, 2020, 2025)
+   * @returns {Promise<Object>} - GEE image data with download URL
+   */
+  async getPopulationData(bounds, year = 2020) {
+    await this.initialize();
+
+    try {
+      console.log('👥 Processing population data with Google Earth Engine...');
+      
+      // --- AOI (Area of Interest) ---
+      const geometry = ee.Geometry.Rectangle([bounds.west, bounds.south, bounds.east, bounds.north]);
+
+      // --- NASA SEDAC Gridded Population of World (GPW) v4.11 ---
+      // Collection contains population count and density for different years
+      const populationCollection = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Density');
+      
+      // Filter by year - GPW provides data for 2000, 2005, 2010, 2015, 2020
+      const startYear = year.toString() + '-01-01';
+      const endYear = year.toString() + '-12-31';
+      
+      const populationDensity = populationCollection
+        .filterDate(startYear, endYear)
+        .first()
+        .select('population_density')
+        .clip(geometry);
+
+      // Check if data exists for the specified year
+      const imageInfo = await new Promise((resolve, reject) => {
+        populationDensity.getInfo((info, error) => {
+          if (error) {
+            reject(error);
+          } else if (!info) {
+            reject(new Error(`No population data available for year ${year}`));
+          } else {
+            resolve(info);
+          }
+        });
+      });
+
+      console.log(`📊 Processing population density data for year ${year}`);
+
+      // --- Calculate population statistics ---
+      const reduceCfg = { 
+        reducer: ee.Reducer.percentile([10, 25, 50, 75, 90]).combine(
+          ee.Reducer.minMax(), '', true
+        ).combine(
+          ee.Reducer.mean(), '', true
+        ).combine(
+          ee.Reducer.sum(), '', true  // Total population estimate
+        ), 
+        geometry, 
+        scale: 1000,  // ~1km resolution for GPW
+        maxPixels: 1e9 
+      };
+      
+      const populationStats = await new Promise((resolve, reject) => {
+        populationDensity.reduceRegion(reduceCfg).getInfo((result, error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result || {});
+          }
+        });
+      });
+
+      // --- Create population density zones ---
+      const popDensity = populationDensity.select('population_density');
+      const densityZones = popDensity
+        .where(popDensity.lt(10), 1)        // Sparse (< 10 people/km²)
+        .where(popDensity.gte(10).and(popDensity.lt(100)), 2)   // Rural (10-100)
+        .where(popDensity.gte(100).and(popDensity.lt(1000)), 3) // Suburban (100-1000)
+        .where(popDensity.gte(1000).and(popDensity.lt(5000)), 4) // Urban (1000-5000)
+        .where(popDensity.gte(5000), 5)     // Dense Urban (> 5000)
+        .rename('PopulationZones');
+
+      // --- Land cover integration for urban analysis ---
+      const lc = ee.ImageCollection('MODIS/006/MCD12Q1')
+          .filterDate('2020-01-01','2020-12-31')
+          .first()
+          .select('LC_Type1');
+      const urbanMask = lc.eq(13); // Urban and built-up lands
+
+      // Calculate urban vs rural population densities
+      const urbanPopResult = await new Promise((resolve, reject) => {
+        popDensity.updateMask(urbanMask).reduceRegion({
+          reducer: ee.Reducer.mean(),
+          geometry,
+          scale: 1000,
+          maxPixels: 1e9
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result.population_density || null);
+        });
+      });
+
+      const ruralPopResult = await new Promise((resolve, reject) => {
+        popDensity.updateMask(urbanMask.not()).reduceRegion({
+          reducer: ee.Reducer.mean(),
+          geometry,
+          scale: 1000,
+          maxPixels: 1e9
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result.population_density || null);
+        });
+      });
+
+      // --- Visualization parameters ---
+      const popVis = { 
+        min: 0, 
+        max: 1000, 
+        palette: ['lightblue', 'yellow', 'orange', 'red', 'darkred'] 
+      };
+      
+      const zoneVis = { 
+        min: 1, 
+        max: 5, 
+        palette: ['lightblue', 'lightgreen', 'yellow', 'orange', 'red'] 
+      };
+
+      // --- Generate image thumbnail URL ---
+      const areaDeg2 = (bounds.east - bounds.west) * (bounds.north - bounds.south);
+      const dimensions = areaDeg2 > 1 ? 1024 : 512;
+
+      const imageUrl = await new Promise((resolve, reject) => {
+        popDensity.getThumbURL(
+          { 
+            ...popVis, 
+            region: geometry, 
+            format: 'png', 
+            dimensions 
+          },
+          (url, err) => {
+            if (err) {
+              reject(new Error(`Failed to generate population image: ${err}`));
+            } else {
+              resolve(url);
+            }
+          }
+        );
+      });
+
+      // --- Calculate area and total population estimate ---
+      const areaKm2 = await new Promise((resolve, reject) => {
+        geometry.area().divide(1e6).getInfo((area, error) => {
+          if (error) reject(error);
+          else resolve(area);
+        });
+      });
+
+      const totalPopulationEstimate = populationStats.population_density_sum 
+        ? Math.round(populationStats.population_density_sum)
+        : null;
+
+      return {
+        success: true,
+        imageUrl,
+        bounds,
+        year,
+        dataSource: 'NASA SEDAC Gridded Population of the World (GPW) v4.11',
+        description: `Population density estimates for ${year} with demographic analysis`,
+        visualizationParams: popVis,
+        statistics: {
+          populationStats,
+          urbanMeanDensity: urbanPopResult ? parseFloat(urbanPopResult.toFixed(2)) : null,
+          ruralMeanDensity: ruralPopResult ? parseFloat(ruralPopResult.toFixed(2)) : null,
+          totalAreaKm2: parseFloat(areaKm2.toFixed(2)),
+          estimatedTotalPopulation: totalPopulationEstimate,
+          densityRange: { min: 0, max: 1000 }
+        },
+        processingInfo: {
+          algorithm: 'UN-adjusted population estimates from national census data',
+          units: 'People per square kilometer',
+          resolution: '30 arc-seconds (~1km at equator)',
+          dataYear: year,
+          source: 'Center for International Earth Science Information Network (CIESIN)'
+        },
+        populationZones: {
+          description: 'Population density classification zones',
+          zones: {
+            1: 'Sparse (<10 people/km²)',
+            2: 'Rural (10-100 people/km²)', 
+            3: 'Suburban (100-1,000 people/km²)',
+            4: 'Urban (1,000-5,000 people/km²)',
+            5: 'Dense Urban (>5,000 people/km²)'
+          },
+          visualizationParams: zoneVis
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching population data:', error);
+      
+      if (error.message.includes('User memory limit exceeded')) {
+        throw new Error('Area too large for processing. Please try a smaller region.');
+      } else if (error.message.includes('Computation timed out')) {
+        throw new Error('Processing timed out. Please try a smaller area.');
+      } else if (error.message.includes('No population data available')) {
+        throw new Error(`No population data available for year ${year}. Available years: 2000, 2005, 2010, 2015, 2020.`);
+      } else {
+        throw new Error(`Failed to process population data: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Get population data for predefined city bounds
+   * @param {string} cityName - Name of the city
+   * @param {number} year - Year for population data
+   * @returns {Promise<Object>} - Population data for the city
+   */
+  async getCityPopulationData(cityName, year = 2020) {
+    const cityBounds = this.getCityBounds(cityName);
+    if (!cityBounds) {
+      throw new Error(`City "${cityName}" not found or not supported`);
+    }
+
+    return await this.getPopulationData(cityBounds, year);
+  }
+
+  /**
    * Get supported cities list
    * @returns {Array} - List of supported city names
    */

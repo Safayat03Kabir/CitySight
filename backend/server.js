@@ -10,6 +10,7 @@ require('dotenv').config();
 // Import route modules
 const heatRoutes = require('./routes/heatRoutes');
 const airQualityRoutes = require('./routes/airQualityRoutes');
+const populationRoutes = require('./routes/populationRoutes');
 
 // Import GEE services for initialization
 const geeService = require('./services/geeService');
@@ -64,6 +65,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/heat', heatRoutes);
 app.use('/api/airquality', airQualityRoutes);
+app.use('/api/population', populationRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -76,11 +78,14 @@ app.get('/api', (req, res) => {
       heat: '/api/heat',
       heatInfo: '/api/heat/info',
       airQuality: '/api/airquality',
-      airQualityInfo: '/api/airquality/info'
+      airQualityInfo: '/api/airquality/info',
+      population: '/api/population',
+      populationInfo: '/api/population/info'
     },
     documentation: {
       heatEndpoint: 'GET /api/heat?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
       airQualityEndpoint: 'GET /api/airquality?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
+      populationEndpoint: 'GET /api/population?bounds=west,south,east,north&year=YYYY',
       exampleRequest: '/api/heat?bounds=-74.1,40.6,-73.9,40.8&startDate=2024-01-01&endDate=2024-08-01'
     },
     timestamp: new Date().toISOString()
@@ -98,7 +103,9 @@ app.use('*', (req, res) => {
       '/api/heat',
       '/api/heat/info',
       '/api/airquality',
-      '/api/airquality/info'
+      '/api/airquality/info',
+      '/api/population',
+      '/api/population/info'
     ],
     timestamp: new Date().toISOString()
   });
@@ -144,7 +151,8 @@ const startServer = async () => {
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
       console.log(`🌡️ Heat API: http://localhost:${PORT}/api/heat`);
       console.log(`🌬️ Air Quality API: http://localhost:${PORT}/api/airquality`);
-      console.log(`📋 API Documentation: http://localhost:${PORT}/api`);
+      console.log(`� Population API: http://localhost:${PORT}/api/population`);
+      console.log(`�📋 API Documentation: http://localhost:${PORT}/api`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
