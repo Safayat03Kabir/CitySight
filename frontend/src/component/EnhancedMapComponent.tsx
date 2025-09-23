@@ -3,8 +3,25 @@ import React, { useEffect, useState } from 'react';
 import { HeatService } from '../services/heatService';
 import { AirQualityService } from '../services/airQualityService';
 import { PopulationService } from '../services/populationService';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ReferenceLine,
+} from 'recharts';
 
 // Type definitions for the heat data response
+interface HeatYearPoint {
+  year: number;
+  meanC: number | null;
+  sampleCount: number;
+  hasData: boolean;
+}
+
 interface HeatStatistics {
   urbanMeanC: number;
   ruralMeanC: number;
@@ -62,6 +79,7 @@ interface HeatDataResponse {
   visualizationParams: VisualizationParams;
   overlayBounds: OverlayBounds;
   dateRange: DateRange;
+  timeSeries?: HeatYearPoint[];
 }
 
 interface AirQualityDataResponse {
@@ -1300,6 +1318,75 @@ const EnhancedMapComponent = () => {
               </div>
             </div>
           </div>
+
+          {/* Yearly Temperature Time Series */}
+          {heatData?.data?.timeSeries && heatData.data.timeSeries.length > 0 ? (
+            <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 shadow mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-gray-700">Yearly Mean Temperature</div>
+                <div className="text-xs text-gray-500">Hot-season AOI mean (°C)</div>
+              </div>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <LineChart data={heatData.data.timeSeries}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="year" tickMargin={8} />
+                    <YAxis
+                      tickMargin={8}
+                      label={{ value: '°C', angle: -90, position: 'insideLeft' }}
+                      allowDecimals
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length > 0) {
+                          const data = payload[0].payload as HeatYearPoint;
+                          return (
+                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                              <p className="font-medium text-gray-900">{`Year: ${label}`}</p>
+                              {data.hasData ? (
+                                <>
+                                  <p className="text-orange-600">{`Mean Temp: ${data.meanC?.toFixed(2)} °C`}</p>
+                                  <p className="text-gray-600 text-sm">{`Samples: ${data.sampleCount} images`}</p>
+                                </>
+                              ) : (
+                                <p className="text-gray-500">No data available</p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    {/* Don't connect gaps */}
+                    <Line
+                      type="linear"
+                      dataKey="meanC"
+                      connectNulls={false}
+                      dot={{ r: 3, fill: '#f59e0b' }}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                    />
+                    {/* Optional: highlight selected year */}
+                    <ReferenceLine 
+                      x={selectedYear} 
+                      strokeDasharray="4 4" 
+                      stroke="#ef4444"
+                      strokeWidth={1}
+                      label={{ value: `${selectedYear}`, position: 'top' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                Gaps indicate years with no valid observations (clouds/QA mask). Red line shows selected year.
+              </div>
+            </div>
+          ) : (
+            <div className="mt-8 text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mb-8">
+              No time series available for this area/date range.
+            </div>
+          )}
 
           {/* Date Range Information */}
           {heatData.data.dateRange && (
