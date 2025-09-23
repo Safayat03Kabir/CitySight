@@ -17,7 +17,7 @@ const geeService = require('./services/geeService');
 const airQualityService = require('./services/airQualityService');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Security middleware
 app.use(helmet());

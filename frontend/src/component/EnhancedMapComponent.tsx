@@ -182,7 +182,7 @@ const EnhancedMapComponent = () => {
 
         // Add base tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
+          
         }).addTo(mapInstance);
 
         // Only set map if component is still mounted
