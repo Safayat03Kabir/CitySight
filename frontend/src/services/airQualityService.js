@@ -1,22 +1,22 @@
-// Frontend service for interacting with heat API
+// Frontend service for interacting with air quality API
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
-export class HeatService {
+export class AirQualityService {
   /**
-   * Get heat data for custom bounds
+   * Get air quality data for custom bounds
    * @param {Object} bounds - { west, south, east, north }
    * @param {string} startDate - YYYY-MM-DD format
    * @param {string} endDate - YYYY-MM-DD format
-   * @returns {Promise<Object>} Heat data response
+   * @returns {Promise<Object>} Air quality data response
    */
-  static async getHeatData(bounds, startDate = '2024-01-01', endDate = '2024-08-01') {
+  static async getAirQualityData(bounds, startDate = '2024-01-01', endDate = '2024-08-01') {
     try {
-      console.log('🌡️ Fetching heat data for bounds:', bounds);
+      console.log('🌬️ Fetching air quality data for bounds:', bounds);
       
       // Format exactly as specified in requirements
       const boundsString = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`;
-      const url = `${API_BASE_URL}/api/heat?bounds=${boundsString}&startDate=${startDate}&endDate=${endDate}`;
+      const url = `${API_BASE_URL}/api/airquality?bounds=${boundsString}&startDate=${startDate}&endDate=${endDate}`;
       
       console.log('📡 Request URL:', url);
       
@@ -26,7 +26,7 @@ export class HeatService {
       console.log('📥 Response received:', data);
       
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Failed to fetch heat data');
+        throw new Error(data.error?.message || 'Failed to fetch air quality data');
       }
       
       // Validate response structure
@@ -36,24 +36,24 @@ export class HeatService {
       
       return data;
     } catch (error) {
-      console.error('❌ Error fetching heat data:', error);
+      console.error('❌ Error fetching air quality data:', error);
       throw error;
     }
   }
 
   /**
-   * Get heat data for a predefined city
+   * Get air quality data for a predefined city
    * @param {string} cityName - Name of the city
    * @param {string} startDate - YYYY-MM-DD format
    * @param {string} endDate - YYYY-MM-DD format
-   * @returns {Promise<Object>} Heat data response
+   * @returns {Promise<Object>} Air quality data response
    */
-  static async getCityHeatData(cityName, startDate = '2024-01-01', endDate = '2024-08-01') {
+  static async getCityAirQualityData(cityName, startDate = '2024-01-01', endDate = '2024-08-01') {
     try {
-      console.log('🏙️ Fetching heat data for city:', cityName);
+      console.log('🏙️ Fetching air quality data for city:', cityName);
       
       // Format exactly as specified in requirements
-      const url = `${API_BASE_URL}/api/heat/city/${encodeURIComponent(cityName)}?startDate=${startDate}&endDate=${endDate}`;
+      const url = `${API_BASE_URL}/api/airquality/city/${encodeURIComponent(cityName)}?startDate=${startDate}&endDate=${endDate}`;
       
       console.log('📡 Request URL:', url);
       
@@ -63,7 +63,7 @@ export class HeatService {
       console.log('📥 Response received:', data);
       
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Failed to fetch city heat data');
+        throw new Error(data.error?.message || 'Failed to fetch city air quality data');
       }
       
       // Validate response structure
@@ -73,7 +73,7 @@ export class HeatService {
       
       return data;
     } catch (error) {
-      console.error('❌ Error fetching city heat data:', error);
+      console.error('❌ Error fetching city air quality data:', error);
       throw error;
     }
   }
@@ -81,11 +81,11 @@ export class HeatService {
   /**
    * Alternative POST method for complex requests
    * @param {Object} requestData - Complete request payload
-   * @returns {Promise<Object>} Heat data response
+   * @returns {Promise<Object>} Air quality data response
    */
-  static async analyzeHeatData(requestData) {
+  static async analyzeAirQualityData(requestData) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/heat/analyze`, {
+      const response = await fetch(`${API_BASE_URL}/api/airquality/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,12 +96,12 @@ export class HeatService {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Failed to analyze heat data');
+        throw new Error(data.error?.message || 'Failed to analyze air quality data');
       }
       
       return data;
     } catch (error) {
-      console.error('Error analyzing heat data:', error);
+      console.error('Error analyzing air quality data:', error);
       throw error;
     }
   }
@@ -112,7 +112,7 @@ export class HeatService {
    */
   static async getSupportedCities() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/heat/cities`);
+      const response = await fetch(`${API_BASE_URL}/api/airquality/cities`);
       const data = await response.json();
       
       if (!response.ok) {
@@ -125,64 +125,84 @@ export class HeatService {
       throw error;
     }
   }
+
+  /**
+   * Get air quality API information
+   * @returns {Promise<Object>} API information
+   */
+  static async getAirQualityInfo() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/airquality/info`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Failed to fetch air quality info');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error fetching air quality info:', error);
+      throw error;
+    }
+  }
 }
 
 // Example usage in a React component:
 /*
-import { HeatService } from '../services/heatService';
+import { AirQualityService } from '../services/airQualityService';
 
 const MapComponent = () => {
-  const [heatData, setHeatData] = useState(null);
+  const [airQualityData, setAirQualityData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchHeatData = async (bounds) => {
+  const fetchAirQualityData = async (bounds) => {
     setLoading(true);
     try {
       // Method 1: Using bounds
-      const data = await HeatService.getHeatData(bounds);
+      const data = await AirQualityService.getAirQualityData(bounds);
       
       // Method 2: Using city name
-      // const data = await HeatService.getCityHeatData('New York');
+      // const data = await AirQualityService.getCityAirQualityData('New York');
       
       // Method 3: Using POST with complex data
       // const requestData = {
       //   bounds: bounds,
       //   startDate: "2024-01-01",
       //   endDate: "2024-08-01",
-      //   options: { cloudCover: 20, season: "hot" }
+      //   options: { pollutants: ["NO2", "CO", "SO2"] }
       // };
-      // const data = await HeatService.analyzeHeatData(requestData);
+      // const data = await AirQualityService.analyzeAirQualityData(requestData);
       
-      setHeatData(data);
+      setAirQualityData(data);
       
-      // Add heat overlay to map
+      // Add air quality overlay to map
       if (data.success && data.data.imageUrl) {
-        addHeatOverlayToMap(data.data);
+        addAirQualityOverlayToMap(data.data);
       }
     } catch (error) {
-      console.error('Failed to fetch heat data:', error);
+      console.error('Failed to fetch air quality data:', error);
       // Handle error (show toast, etc.)
     } finally {
       setLoading(false);
     }
   };
 
-  const addHeatOverlayToMap = (heatData) => {
+  const addAirQualityOverlayToMap = (airQualityData) => {
     // Example for Leaflet
     const imageOverlay = L.imageOverlay(
-      heatData.imageUrl,
+      airQualityData.imageUrl,
       [
-        [heatData.overlayBounds.southwest.lat, heatData.overlayBounds.southwest.lng],
-        [heatData.overlayBounds.northeast.lat, heatData.overlayBounds.northeast.lng]
+        [airQualityData.overlayBounds.southwest.lat, airQualityData.overlayBounds.southwest.lng],
+        [airQualityData.overlayBounds.northeast.lat, airQualityData.overlayBounds.northeast.lng]
       ],
       { 
         opacity: 0.7,
-        alt: 'Heat Island Map'
+        alt: 'Air Quality Map'
       }
     ).addTo(map);
     
     // Show statistics
-    console.log('Heat Island Intensity:', heatData.statistics.heatIslandIntensity + '°C');
+    console.log('Air Quality Difference:', airQualityData.statistics.airQualityDifference + '%');
   };
 
   return (

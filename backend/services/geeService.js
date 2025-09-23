@@ -223,6 +223,10 @@ class GEEService {
       const heatIslandIntensity = urbanMeanResult && ruralMeanResult ? 
         (urbanMeanResult - ruralMeanResult).toFixed(2) : null;
 
+      // --- Compute yearly time series for the AOI ---
+      console.log('📊 Computing yearly time series...');
+      const timeSeries = await this.computeYearlyTimeSeries(geometry, startDate, endDate, maskLandsatQA, toCelsiusL8, inHotMonths);
+
       return {
         success: true,
         imageUrl,
@@ -255,7 +259,8 @@ class GEEService {
             4: 'Extreme (>40°C)'
           },
           visualizationParams: zoneVis
-        }
+        },
+        timeSeries: timeSeries
       };
 
     } catch (error) {
@@ -305,6 +310,357 @@ class GEEService {
     };
 
     return cityBounds[cityName] || null;
+  }
+
+  /**
+   * Fetch Population Density data from NASA SEDAC GPW for demographic analysis
+   * @param {Object} bounds - Bounding box coordinates {north, south, east, west}
+   * @param {number} year - Year for population data (2000, 2005, 2010, 2015, 2020, 2025)
+   * @returns {Promise<Object>} - GEE image data with download URL
+   */
+  async getPopulationData(bounds, year = 2020) {
+    await this.initialize();
+
+    try {
+      console.log('👥 Processing population data with Google Earth Engine...');
+      
+      // --- AOI (Area of Interest) ---
+      const geometry = ee.Geometry.Rectangle([bounds.west, bounds.south, bounds.east, bounds.north]);
+
+      // --- NASA SEDAC Gridded Population of World (GPW) v4.11 ---
+      // Collection contains population count and density for different years
+      const populationCollection = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Density');
+      
+      // Filter by year - GPW provides data for 2000, 2005, 2010, 2015, 2020
+      const startYear = year.toString() + '-01-01';
+      const endYear = year.toString() + '-12-31';
+      
+      const populationDensity = populationCollection
+        .filterDate(startYear, endYear)
+        .first()
+        .select('population_density')
+        .clip(geometry);
+
+      // Check if data exists for the specified year
+      const imageInfo = await new Promise((resolve, reject) => {
+        populationDensity.getInfo((info, error) => {
+          if (error) {
+            reject(error);
+          } else if (!info) {
+            reject(new Error(`No population data available for year ${year}`));
+          } else {
+            resolve(info);
+          }
+        });
+      });
+
+      console.log(`📊 Processing population density data for year ${year}`);
+
+      // --- Calculate population statistics ---
+      const reduceCfg = { 
+        reducer: ee.Reducer.percentile([10, 25, 50, 75, 90]).combine(
+          ee.Reducer.minMax(), '', true
+        ).combine(
+          ee.Reducer.mean(), '', true
+        ).combine(
+          ee.Reducer.sum(), '', true  // Total population estimate
+        ), 
+        geometry, 
+        scale: 1000,  // ~1km resolution for GPW
+        maxPixels: 1e9 
+      };
+      
+      const populationStats = await new Promise((resolve, reject) => {
+        populationDensity.reduceRegion(reduceCfg).getInfo((result, error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result || {});
+          }
+        });
+      });
+
+      // --- Create population density zones ---
+      const popDensity = populationDensity.select('population_density');
+      const densityZones = popDensity
+        .where(popDensity.lt(10), 1)        // Sparse (< 10 people/km²)
+        .where(popDensity.gte(10).and(popDensity.lt(100)), 2)   // Rural (10-100)
+        .where(popDensity.gte(100).and(popDensity.lt(1000)), 3) // Suburban (100-1000)
+        .where(popDensity.gte(1000).and(popDensity.lt(5000)), 4) // Urban (1000-5000)
+        .where(popDensity.gte(5000), 5)     // Dense Urban (> 5000)
+        .rename('PopulationZones');
+
+      // --- Land cover integration for urban analysis ---
+      const lc = ee.ImageCollection('MODIS/006/MCD12Q1')
+          .filterDate('2020-01-01','2020-12-31')
+          .first()
+          .select('LC_Type1');
+      const urbanMask = lc.eq(13); // Urban and built-up lands
+
+      // Calculate urban vs rural population densities
+      const urbanPopResult = await new Promise((resolve, reject) => {
+        popDensity.updateMask(urbanMask).reduceRegion({
+          reducer: ee.Reducer.mean(),
+          geometry,
+          scale: 1000,
+          maxPixels: 1e9
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result.population_density || null);
+        });
+      });
+
+      const ruralPopResult = await new Promise((resolve, reject) => {
+        popDensity.updateMask(urbanMask.not()).reduceRegion({
+          reducer: ee.Reducer.mean(),
+          geometry,
+          scale: 1000,
+          maxPixels: 1e9
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result.population_density || null);
+        });
+      });
+
+      // --- Visualization parameters ---
+      const popVis = { 
+        min: 0, 
+        max: 1000, 
+        palette: ['lightblue', 'yellow', 'orange', 'red', 'darkred'] 
+      };
+      
+      const zoneVis = { 
+        min: 1, 
+        max: 5, 
+        palette: ['lightblue', 'lightgreen', 'yellow', 'orange', 'red'] 
+      };
+
+      // --- Generate image thumbnail URL ---
+      const areaDeg2 = (bounds.east - bounds.west) * (bounds.north - bounds.south);
+      const dimensions = areaDeg2 > 1 ? 1024 : 512;
+
+      const imageUrl = await new Promise((resolve, reject) => {
+        popDensity.getThumbURL(
+          { 
+            ...popVis, 
+            region: geometry, 
+            format: 'png', 
+            dimensions 
+          },
+          (url, err) => {
+            if (err) {
+              reject(new Error(`Failed to generate population image: ${err}`));
+            } else {
+              resolve(url);
+            }
+          }
+        );
+      });
+
+      // --- Calculate area and total population estimate ---
+      const areaKm2 = await new Promise((resolve, reject) => {
+        geometry.area().divide(1e6).getInfo((area, error) => {
+          if (error) reject(error);
+          else resolve(area);
+        });
+      });
+
+      const totalPopulationEstimate = populationStats.population_density_sum 
+        ? Math.round(populationStats.population_density_sum)
+        : null;
+
+      return {
+        success: true,
+        imageUrl,
+        bounds,
+        year,
+        dataSource: 'NASA SEDAC Gridded Population of the World (GPW) v4.11',
+        description: `Population density estimates for ${year} with demographic analysis`,
+        visualizationParams: popVis,
+        statistics: {
+          populationStats,
+          urbanMeanDensity: urbanPopResult ? parseFloat(urbanPopResult.toFixed(2)) : null,
+          ruralMeanDensity: ruralPopResult ? parseFloat(ruralPopResult.toFixed(2)) : null,
+          totalAreaKm2: parseFloat(areaKm2.toFixed(2)),
+          estimatedTotalPopulation: totalPopulationEstimate,
+          densityRange: { min: 0, max: 1000 }
+        },
+        processingInfo: {
+          algorithm: 'UN-adjusted population estimates from national census data',
+          units: 'People per square kilometer',
+          resolution: '30 arc-seconds (~1km at equator)',
+          dataYear: year,
+          source: 'Center for International Earth Science Information Network (CIESIN)'
+        },
+        populationZones: {
+          description: 'Population density classification zones',
+          zones: {
+            1: 'Sparse (<10 people/km²)',
+            2: 'Rural (10-100 people/km²)', 
+            3: 'Suburban (100-1,000 people/km²)',
+            4: 'Urban (1,000-5,000 people/km²)',
+            5: 'Dense Urban (>5,000 people/km²)'
+          },
+          visualizationParams: zoneVis
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error fetching population data:', error);
+      
+      if (error.message.includes('User memory limit exceeded')) {
+        throw new Error('Area too large for processing. Please try a smaller region.');
+      } else if (error.message.includes('Computation timed out')) {
+        throw new Error('Processing timed out. Please try a smaller area.');
+      } else if (error.message.includes('No population data available')) {
+        throw new Error(`No population data available for year ${year}. Available years: 2000, 2005, 2010, 2015, 2020.`);
+      } else {
+        throw new Error(`Failed to process population data: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Get population data for predefined city bounds
+   * @param {string} cityName - Name of the city
+   * @param {number} year - Year for population data
+   * @returns {Promise<Object>} - Population data for the city
+   */
+  async getCityPopulationData(cityName, year = 2020) {
+    const cityBounds = this.getCityBounds(cityName);
+    if (!cityBounds) {
+      throw new Error(`City "${cityName}" not found or not supported`);
+    }
+
+    return await this.getPopulationData(cityBounds, year);
+  }
+
+  /**
+   * Compute yearly time series of AOI mean Land Surface Temperature
+   * @param {Object} geometry - AOI geometry
+   * @param {string} startDate - Start date in YYYY-MM-DD format
+   * @param {string} endDate - End date in YYYY-MM-DD format
+   * @param {Function} maskLandsatQA - QA masking function
+   * @param {Function} toCelsiusL8 - Temperature conversion function
+   * @param {Object} inHotMonths - Hot season filter
+   * @returns {Promise<Array>} - Array of yearly temperature points
+   */
+  async computeYearlyTimeSeries(geometry, startDate, endDate, maskLandsatQA, toCelsiusL8, inHotMonths) {
+    try {
+      // Determine the year range for time series
+      const endYear = parseInt(endDate.split('-')[0]);
+      const startYear = 2013; // Earliest Landsat 8 data
+      
+      console.log(`📈 Computing time series from ${startYear} to ${endYear}`);
+      
+      const timeSeries = [];
+      
+      // Process each year individually
+      for (let year = startYear; year <= endYear; year++) {
+        console.log(`📅 Processing year ${year}...`);
+        
+        try {
+          // Create year-specific date range (hot season: April-June)
+          const yearStart = `${year}-01-01`;
+          const yearEnd = `${year}-12-31`;
+          
+          // --- Landsat 8/9 Collection 2 Level 2 (merge collections) ---
+          const l8 = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+              .filterBounds(geometry)
+              .filterDate(yearStart, yearEnd)
+              .filter(ee.Filter.lt('CLOUD_COVER', 20))
+              .select(['ST_B10','QA_PIXEL'])
+              .map(maskLandsatQA)
+              .map(toCelsiusL8);
+              
+          const l9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+              .filterBounds(geometry)
+              .filterDate(yearStart, yearEnd)
+              .filter(ee.Filter.lt('CLOUD_COVER', 20))
+              .select(['ST_B10','QA_PIXEL'])
+              .map(maskLandsatQA)
+              .map(toCelsiusL8);
+              
+          const yearLandsat = l8.merge(l9);
+          
+          // Filter to hot season (same as main analysis)
+          const hotSeasonCollection = yearLandsat.filter(inHotMonths);
+          
+          // Check if there's any data for this year
+          const yearCollectionSize = await new Promise((resolve, reject) => {
+            hotSeasonCollection.size().getInfo((size, error) => {
+              if (error) reject(error);
+              else resolve(size);
+            });
+          });
+          
+          if (yearCollectionSize === 0) {
+            // No data available for this year
+            timeSeries.push({
+              year: year,
+              meanC: null,
+              sampleCount: 0,
+              hasData: false
+            });
+            console.log(`❌ No data available for year ${year}`);
+            continue;
+          }
+          
+          // Create hot season composite for this year
+          const yearHotComposite = hotSeasonCollection.median().clip(geometry);
+          
+          // Calculate AOI mean temperature
+          const yearMeanResult = await new Promise((resolve, reject) => {
+            yearHotComposite.select('LST').reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geometry,
+              scale: 30,
+              maxPixels: 1e9
+            }).getInfo((result, error) => {
+              if (error) reject(error);
+              else resolve(result.LST || null);
+            });
+          });
+          
+          if (yearMeanResult !== null && !isNaN(yearMeanResult)) {
+            timeSeries.push({
+              year: year,
+              meanC: parseFloat(yearMeanResult.toFixed(2)),
+              sampleCount: yearCollectionSize,
+              hasData: true
+            });
+            console.log(`✅ Year ${year}: ${yearMeanResult.toFixed(2)}°C (${yearCollectionSize} images)`);
+          } else {
+            // Data exists but computation failed (e.g., all masked pixels)
+            timeSeries.push({
+              year: year,
+              meanC: null,
+              sampleCount: yearCollectionSize,
+              hasData: false
+            });
+            console.log(`⚠️ Year ${year}: No valid pixels after masking`);
+          }
+          
+        } catch (yearError) {
+          console.warn(`⚠️ Error processing year ${year}:`, yearError.message);
+          // Add null entry for failed year
+          timeSeries.push({
+            year: year,
+            meanC: null,
+            sampleCount: 0,
+            hasData: false
+          });
+        }
+      }
+      
+      console.log(`📈 Time series computation complete: ${timeSeries.filter(p => p.hasData).length}/${timeSeries.length} years with data`);
+      return timeSeries;
+      
+    } catch (error) {
+      console.error('❌ Error computing time series:', error);
+      // Return empty array on failure to not break main response
+      return [];
+    }
   }
 
   /**
