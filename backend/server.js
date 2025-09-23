@@ -9,9 +9,11 @@ require('dotenv').config();
 
 // Import route modules
 const heatRoutes = require('./routes/heatRoutes');
+const airQualityRoutes = require('./routes/airQualityRoutes');
 
-// Import GEE service for initialization
+// Import GEE services for initialization
 const geeService = require('./services/geeService');
+const airQualityService = require('./services/airQualityService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -61,6 +63,7 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/heat', heatRoutes);
+app.use('/api/airquality', airQualityRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -71,10 +74,13 @@ app.get('/api', (req, res) => {
     endpoints: {
       health: '/health',
       heat: '/api/heat',
-      heatInfo: '/api/heat/info'
+      heatInfo: '/api/heat/info',
+      airQuality: '/api/airquality',
+      airQualityInfo: '/api/airquality/info'
     },
     documentation: {
       heatEndpoint: 'GET /api/heat?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
+      airQualityEndpoint: 'GET /api/airquality?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
       exampleRequest: '/api/heat?bounds=-74.1,40.6,-73.9,40.8&startDate=2024-01-01&endDate=2024-08-01'
     },
     timestamp: new Date().toISOString()
@@ -90,7 +96,9 @@ app.use('*', (req, res) => {
       '/health',
       '/api',
       '/api/heat',
-      '/api/heat/info'
+      '/api/heat/info',
+      '/api/airquality',
+      '/api/airquality/info'
     ],
     timestamp: new Date().toISOString()
   });
@@ -125,15 +133,17 @@ process.on('SIGINT', () => {
 // Start server
 const startServer = async () => {
   try {
-    // Initialize Google Earth Engine
+    // Initialize Google Earth Engine services
     console.log('🛰️ Initializing Google Earth Engine...');
     await geeService.initialize();
+    await airQualityService.initialize();
     
     // Start the HTTP server
     app.listen(PORT, () => {
       console.log(`🔥 CitySight Heat Island API running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
       console.log(`🌡️ Heat API: http://localhost:${PORT}/api/heat`);
+      console.log(`🌬️ Air Quality API: http://localhost:${PORT}/api/airquality`);
       console.log(`📋 API Documentation: http://localhost:${PORT}/api`);
     });
   } catch (error) {
