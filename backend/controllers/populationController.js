@@ -353,8 +353,123 @@ exports.getSupportedCities = (req, res) => {
     })),
     usage: {
       selectCity: 'GET /api/population/city/{cityName}',
-      customArea: 'GET /api/population?bounds=west,south,east,north'
+      customArea: 'GET /api/population?bounds=west,south,east,north',
+      riskAssessment: 'GET /api/population/basic?bounds=west,south,east,north'
     },
     timestamp: new Date().toISOString()
   });
+};
+
+/**
+ * Get basic population data for risk assessment (lightweight endpoint)
+ * GET /api/population/basic?bounds=west,south,east,north&year=YYYY
+ */
+exports.getBasicPopulationData = async (req, res) => {
+  console.log('👥 Basic population data request received:', req.query);
+  
+  try {
+    // Parse query parameters
+    const { bounds, year } = req.query;
+
+    // Validate bounds parameter
+    if (!bounds) {
+      return res.status(400).json({
+        error: 'Missing bounds parameter',
+        message: 'Please provide bounds in format: west,south,east,north',
+        example: '/api/population/basic?bounds=-74.1,40.6,-73.9,40.8',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Parse bounds string into coordinates
+    const boundsArray = bounds.split(',').map(coord => parseFloat(coord.trim()));
+    
+    if (boundsArray.length !== 4 || boundsArray.some(isNaN)) {
+      return res.status(400).json({
+        error: 'Invalid bounds format',
+        message: 'Bounds must be four numbers: west,south,east,north',
+        example: 'bounds=-74.1,40.6,-73.9,40.8',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const [west, south, east, north] = boundsArray;
+
+    // Validate coordinate ranges
+    if (west < -180 || west > 180 || east < -180 || east > 180 || 
+        south < -90 || south > 90 || north < -90 || north > 90) {
+      return res.status(400).json({
+        error: 'Invalid coordinates',
+        message: 'Longitude must be between -180 and 180, latitude between -90 and 90',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (west >= east || south >= north) {
+      return res.status(400).json({
+        error: 'Invalid bounds',
+        message: 'West must be less than east, south must be less than north',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const boundsObj = { west, south, east, north };
+
+    // Validate year parameter (optional)
+    const validYears = [2000, 2005, 2010, 2015, 2020];
+    const targetYear = year ? parseInt(year) : 2020; // Default to 2020
+    
+    if (year && !validYears.includes(targetYear)) {
+      return res.status(400).json({
+        error: 'Invalid year parameter',
+        message: `Year must be one of: ${validYears.join(', ')}`,
+        availableYears: validYears,
+        defaultYear: 2020,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    console.log(`📊 Fetching basic population data for bounds: ${JSON.stringify(boundsObj)}`);
+    console.log(`📅 Year: ${targetYear}`);
+
+    // Add request timeout handling
+    const requestTimeout = setTimeout(() => {
+      console.log('⏰ Basic population data request taking longer than expected...');
+    }, 5000); // Shorter timeout for basic endpoint
+
+    // Fetch basic population data from Google Earth Engine
+    const populationResponse = await geeService.getBasicPopulationData(
+      boundsObj, 
+      targetYear
+    );
+
+    clearTimeout(requestTimeout);
+
+    // Return the response directly from the service
+    res.json(populationResponse);
+
+    console.log('✅ Basic population data request completed successfully');
+
+  } catch (error) {
+    console.error('❌ Error in basic population data endpoint:', error);
+    
+    // Determine appropriate status code
+    let statusCode = 500;
+    if (error.message.includes('No population data available')) {
+      statusCode = 404;
+    } else if (error.message.includes('Invalid') || error.message.includes('bounds')) {
+      statusCode = 400;
+    }
+
+    res.status(statusCode).json({
+      success: false,
+      error: 'Basic population data processing failed',
+      message: error.message,
+      code: statusCode,
+      timestamp: new Date().toISOString(),
+      suggestion: statusCode === 404 ? 
+        'Try a different year or geographic area with known population data' :
+        'Please check your request parameters and try again'
+    });
+  }
 };

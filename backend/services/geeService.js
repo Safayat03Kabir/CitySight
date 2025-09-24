@@ -795,6 +795,115 @@ class GEEService {
   }
 
   /**
+   * Get basic population data for risk assessment (lightweight version)
+   * @param {Object} bounds - Geographic bounds {west, south, east, north}
+   * @param {number} year - Year for population data (2000, 2005, 2010, 2015, 2020)
+   * @returns {Promise<Object>} Basic population statistics
+   */
+  async getBasicPopulationData(bounds, year = 2020) {
+    await this.initialize();
+
+    try {
+      console.log('👥 Processing basic population data for risk assessment...');
+      
+      // --- AOI (Area of Interest) ---
+      const geometry = ee.Geometry.Rectangle([bounds.west, bounds.south, bounds.east, bounds.north]);
+      
+      // Calculate area in km²
+      const areaMeters = geometry.area();
+      const areaKm2 = areaMeters.divide(1e6);
+
+      // --- NASA SEDAC Gridded Population of World (GPW) v4.11 ---
+      const populationCollection = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Density');
+      
+      // Filter by year - GPW provides data for 2000, 2005, 2010, 2015, 2020
+      const startYear = year.toString() + '-01-01';
+      const endYear = year.toString() + '-12-31';
+      
+      const populationDensity = populationCollection
+        .filterDate(startYear, endYear)
+        .first()
+        .select('population_density')
+        .clip(geometry);
+
+      // Check if data exists
+      const imageCheck = await new Promise((resolve, reject) => {
+        populationDensity.getInfo((info, error) => {
+          if (error || !info) {
+            reject(new Error(`No population data available for year ${year} in this area`));
+          } else {
+            resolve(info);
+          }
+        });
+      });
+
+      console.log(`📊 Computing basic population statistics for year ${year}`);
+
+      // --- Calculate basic population statistics ---
+      const reduceCfg = { 
+        reducer: ee.Reducer.mean().combine(
+          ee.Reducer.minMax(), '', true
+        ).combine(
+          ee.Reducer.sum(), '', true
+        ), 
+        geometry, 
+        scale: 1000,  // ~1km resolution
+        maxPixels: 1e6  // Lower limit for faster processing
+      };
+      
+      const [populationStats, areaResult] = await Promise.all([
+        new Promise((resolve, reject) => {
+          populationDensity.reduceRegion(reduceCfg).getInfo((result, error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result || {});
+            }
+          });
+        }),
+        new Promise((resolve, reject) => {
+          areaKm2.getInfo((result, error) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result || 0);
+            }
+          });
+        })
+      ]);
+
+      // Extract population statistics
+      const meanDensity = populationStats.population_density_mean || 0;
+      const minDensity = populationStats.population_density_min || 0;
+      const maxDensity = populationStats.population_density_max || 0;
+      const totalPopulation = populationStats.population_density_sum || 0;
+
+      console.log(`✅ Basic population data processed successfully`);
+      console.log(`📊 Total Population: ${Math.round(totalPopulation).toLocaleString()}`);
+      console.log(`📊 Average Density: ${Math.round(meanDensity)} people/km²`);
+      console.log(`📊 Area: ${Math.round(areaResult * 100) / 100} km²`);
+
+      return {
+        success: true,
+        data: {
+          population_sum: Math.round(totalPopulation),
+          population_density_mean: Math.round(meanDensity * 100) / 100,
+          population_density_min: Math.round(minDensity * 100) / 100,
+          population_density_max: Math.round(maxDensity * 100) / 100,
+          totalArea: Math.round(areaResult * 100) / 100,
+          year: year,
+          bounds: bounds,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error in basic population data processing:', error);
+      throw new Error(`Failed to process basic population data: ${error.message}`);
+    }
+  }
+
+  /**
    * Get supported cities list
    * @returns {Array} - List of supported city names
    */

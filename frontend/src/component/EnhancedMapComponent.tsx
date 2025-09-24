@@ -173,13 +173,20 @@ const EnhancedMapComponent = () => {
   const [airQualityTimeSeries, setAirQualityTimeSeries] = useState<AirQualityYearPoint[]>([]);
   const [populationTimeSeries, setPopulationTimeSeries] = useState<PopulationYearPoint[]>([]);
 
+  // Search functionality state
+  const [searchLoading, setSearchLoading] = useState<boolean>(false);
+  
+  // Selected city state
+  const [selectedCity, setSelectedCity] = useState<string>('New York');
+
   // City coordinates mapping for manual navigation
-  const cityCoordinates: { [key: string]: { lat: number; lng: number; zoom: number } } = {
-    'New York': { lat: 40.7128, lng: -74.0060, zoom: 10 },
-    'Los Angeles': { lat: 34.0522, lng: -118.2437, zoom: 10 },
-    'Chicago': { lat: 41.8781, lng: -87.6298, zoom: 10 },
-    'Dhaka': { lat: 23.8103, lng: 90.4125, zoom: 11 },
-    'Chittagong': { lat: 22.3569, lng: 91.7832, zoom: 11 }
+  const cityCoordinates: { [key: string]: { lat: number; lng: number; zoom: number; icon: string; name: string } } = {
+    'New York': { lat: 40.7128, lng: -74.0060, zoom: 10, icon: '🏙️', name: 'New York' },
+    'Los Angeles': { lat: 34.0522, lng: -118.2437, zoom: 10, icon: '🌴', name: 'Los Angeles' },
+    'Chicago': { lat: 41.8781, lng: -87.6298, zoom: 10, icon: '🌬️', name: 'Chicago' },
+    'London': { lat: 51.5074, lng: -0.1278, zoom: 10, icon: '🇬🇧', name: 'London' },
+    'Dhaka': { lat: 23.8103, lng: 90.4125, zoom: 11, icon: '🏛️', name: 'Dhaka' },
+    'Chittagong': { lat: 22.3569, lng: 91.7832, zoom: 11, icon: '🏢', name: 'Chittagong' }
   };
 
   // City boundaries for manual API calls (for cities not supported by name)
@@ -206,8 +213,80 @@ const EnhancedMapComponent = () => {
     
     const coords = cityCoordinates[cityName];
     if (coords) {
-      map.setView([coords.lat, coords.lng], coords.zoom);
+      // Use smooth flyTo animation like MonitoringMapComponent
+      map.flyTo([coords.lat, coords.lng], coords.zoom, {
+        animate: true,
+        duration: 2 // 2 second animation
+      });
+      setSelectedCity(cityName);
       console.log(`🗺️ Navigated to ${cityName} at ${coords.lat}, ${coords.lng}`);
+    }
+  };
+
+  /**
+   * Search for a location using Nominatim geocoding API
+   */
+  const searchLocation = async (searchQuery: string) => {
+    if (!map || !searchQuery.trim()) {
+      console.warn('⚠️ Map not initialized or empty search query');
+      return;
+    }
+
+    setSearchLoading(true);
+    setError(null);
+
+    try {
+      console.log(`🔍 Searching for location: ${searchQuery}`);
+
+      // Use Nominatim API for geocoding
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1&addressdetails=1`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Geocoding API error: ${response.status}`);
+      }
+
+      const results = await response.json();
+
+      if (!results || results.length === 0) {
+        setError(`No results found for "${searchQuery}". Try a different search term.`);
+        return;
+      }
+
+      const location = results[0];
+      const lat = parseFloat(location.lat);
+      const lng = parseFloat(location.lon);
+      const displayName = location.display_name;
+
+      console.log(`✅ Found location: ${displayName} at ${lat}, ${lng}`);
+
+      // Determine appropriate zoom level based on location type
+      let zoomLevel = 10; // Default city zoom for environmental analysis
+      if (location.type === 'administrative') {
+        zoomLevel = location.class === 'boundary' ? 8 : 10;
+      } else if (location.type === 'city' || location.type === 'town') {
+        zoomLevel = 9;
+      } else if (location.type === 'village') {
+        zoomLevel = 11;
+      } else if (location.type === 'neighbourhood') {
+        zoomLevel = 12;
+      }
+
+      // Animate to the found location with smooth transition
+      map.flyTo([lat, lng], zoomLevel, {
+        animate: true,
+        duration: 2 // 2 second animation
+      });
+
+      setSelectedCity(''); // Clear selected city for custom searches
+      console.log(`🗺️ Navigated to search result: ${displayName}`);
+
+    } catch (error) {
+      console.error(`❌ Error searching for location:`, error);
+      setError(`Failed to search for "${searchQuery}". Please try again.`);
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -475,14 +554,17 @@ const EnhancedMapComponent = () => {
         setHeatData(response);
         await addHeatOverlayToMap(response.data);
         
-        // Zoom to city bounds if overlayBounds are provided
+        // Zoom to city bounds if overlayBounds are provided with smooth animation
         if (map && response.data.overlayBounds) {
           const bounds = [
             [response.data.overlayBounds.southwest.lat, response.data.overlayBounds.southwest.lng],
             [response.data.overlayBounds.northeast.lat, response.data.overlayBounds.northeast.lng]
           ];
-          map.fitBounds(bounds);
-          console.log('🔍 Zoomed to city bounds');
+          map.fitBounds(bounds, {
+            animate: true,
+            duration: 2 // 2 second animation
+          });
+          console.log('🔍 Zoomed to city bounds with smooth transition');
         }
 
         // Start fetching time series data in background using city bounds or request bounds
@@ -540,14 +622,17 @@ const EnhancedMapComponent = () => {
         setAirQualityData(response);
         await addAirQualityOverlayToMap(response.data);
         
-        // Zoom to city bounds if overlayBounds are provided
+        // Zoom to city bounds if overlayBounds are provided with smooth animation
         if (map && response.data.overlayBounds) {
           const bounds = [
             [response.data.overlayBounds.southwest.lat, response.data.overlayBounds.southwest.lng],
             [response.data.overlayBounds.northeast.lat, response.data.overlayBounds.northeast.lng]
           ];
-          map.fitBounds(bounds);
-          console.log('🔍 Zoomed to city bounds');
+          map.fitBounds(bounds, {
+            animate: true,
+            duration: 2 // 2 second animation
+          });
+          console.log('🔍 Zoomed to city bounds with smooth transition');
         }
 
         // Start fetching time series data in background using city bounds or request bounds
@@ -647,14 +732,17 @@ const EnhancedMapComponent = () => {
         setPopulationData(response);
         await addPopulationOverlayToMap(response.data);
         
-        // Zoom to city bounds if overlayBounds are provided
+        // Zoom to city bounds if overlayBounds are provided with smooth animation
         if (map && response.data.overlayBounds) {
           const bounds = [
             [response.data.overlayBounds.southwest.lat, response.data.overlayBounds.southwest.lng],
             [response.data.overlayBounds.northeast.lat, response.data.overlayBounds.northeast.lng]
           ];
-          map.fitBounds(bounds);
-          console.log('🔍 Zoomed to city bounds');
+          map.fitBounds(bounds, {
+            animate: true,
+            duration: 2 // 2 second animation
+          });
+          console.log('🔍 Zoomed to city bounds with smooth transition');
         }
 
         // Start fetching time series data in background using city bounds or request bounds
@@ -1167,15 +1255,45 @@ const EnhancedMapComponent = () => {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    Enviroment Monitoring Map
+                    Environment Analysis
                   </h3>
                 </div>
               </div>
-              {(heatData || airQualityData) && (
-                <div className="text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
-                  Data Loaded ✓
+              
+              <div className="flex items-center space-x-3">
+                {/* Search Box */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search city or address..."
+                    disabled={searchLoading}
+                    className={`px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm w-64 ${
+                      searchLoading ? 'bg-gray-100 cursor-not-allowed' : ''
+                    }`}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        const searchValue = (e.target as HTMLInputElement).value.trim();
+                        if (searchValue && !searchLoading) {
+                          searchLocation(searchValue);
+                        }
+                      }
+                    }}
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    {searchLoading ? (
+                      <div className="animate-spin text-blue-500">⏳</div>
+                    ) : (
+                      <span className="text-gray-400">🔍</span>
+                    )}
+                  </div>
                 </div>
-              )}
+                
+                {(heatData || airQualityData || populationData) && (
+                  <div className="text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
+                    Data Loaded ✓
+                  </div>
+                )}
+              </div>
             </div>
             <div 
               id="heat-map" 
@@ -1381,177 +1499,69 @@ const EnhancedMapComponent = () => {
         </div>
       </div>
 
-      {/* Middle Row: Data City Controls */}
+      {/* Middle Row: Compact City Controls */}
       <div className="mb-8">
-        <div className="p-6 bg-gradient-to-r from-white via-gray-50 to-slate-100 rounded-2xl shadow-2xl border border-gray-200">
-          <div className="flex items-center mb-6">
-            <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg mr-3">
-              <span className="text-xl">🏙️</span>
+        <div className="p-4 bg-gradient-to-r from-white via-gray-50 to-slate-100 rounded-xl shadow-lg border border-gray-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center shadow">
+                <span className="text-lg">🏙️</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                  Quick City Access
+                </h3>
+              </div>
             </div>
-            <div>
-              <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                City Data Analysis
-              </h3>
-              <p className="text-gray-600 mt-1">Quick access to major city environmental data</p>
+            
+            <div className="text-right">
+              <div className="text-base font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                {cityCoordinates[selectedCity]?.icon} {cityCoordinates[selectedCity]?.name}
+              </div>
             </div>
           </div>
-
-          {/* City Control Buttons based on data type */}
-          {dataType === 'heat' && (
-            <div className="flex flex-wrap gap-4">
+          
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(cityCoordinates).map(([cityKey, cityData]) => (
               <button
-                onClick={() => fetchCityData('New York')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-blue-500/25"
+                key={cityKey}
+                onClick={() => navigateToCity(cityKey)}
+                disabled={!map}
+                className={`px-3 py-2 rounded-md transition-colors text-sm ${
+                  selectedCity === cityKey
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                🏙️ New York ({selectedYear})
+                {cityData.icon} {cityData.name}
               </button>
-              
-              <button
-                onClick={() => fetchCityData('Los Angeles')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-orange-500/25"
-              >
-                🌴 Los Angeles ({selectedYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chicago')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/25"
-              >
-                🌬️ Chicago ({selectedYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Dhaka')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-              >
-                🏛️ Dhaka ({selectedYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chittagong')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
-              >
-                🏢 Chittagong ({selectedYear})
-              </button>
-              
-              <button
-                onClick={removeHeatOverlay}
-                disabled={!heatOverlay}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
-              >
-                🗑️ Clear Heat Layer
-              </button>
-            </div>
-          )}
-
-          {dataType === 'airquality' && (
-            <div className="flex flex-wrap gap-4">
-              <button
-                onClick={() => fetchCityData('New York')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/25"
-              >
-                🏙️ New York (2024)
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Los Angeles')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-violet-500 to-violet-600 text-white rounded-xl hover:from-violet-600 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-violet-500/25"
-              >
-                🌴 Los Angeles (2024)
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chicago')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-pink-500/25"
-              >
-                🌬️ Chicago (2024)
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Dhaka')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-              >
-                🏛️ Dhaka (2024)
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chittagong')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
-              >
-                🏢 Chittagong (2024)
-              </button>
-              
-              <button
-                onClick={removeAirQualityOverlay}
-                disabled={!airQualityOverlay}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
-              >
-                🗑️ Clear Air Quality Layer
-              </button>
-            </div>
-          )}
-
-          {dataType === 'population' && (
-            <div className="flex flex-wrap gap-4">
-              <button
-                onClick={() => fetchCityData('New York')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-green-500/25"
-              >
-                🏙️ New York ({selectedPopulationYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Los Angeles')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-              >
-                🌴 Los Angeles ({selectedPopulationYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chicago')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
-              >
-                🌬️ Chicago ({selectedPopulationYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Dhaka')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-xl hover:from-cyan-600 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-cyan-500/25"
-              >
-                🏛️ Dhaka ({selectedPopulationYear})
-              </button>
-              
-              <button
-                onClick={() => fetchCityData('Chittagong')}
-                disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-sky-500 to-sky-600 text-white rounded-xl hover:from-sky-600 hover:to-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-sky-500/25"
-              >
-                🏢 Chittagong ({selectedPopulationYear})
-              </button>
-              
-              <button
-                onClick={removePopulationOverlay}
-                disabled={!populationOverlay}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
-              >
-                🗑️ Clear Population Layer
-              </button>
-            </div>
-          )}
+            ))}
+            
+            {/* Data fetch and clear buttons */}
+            <button
+              onClick={() => {
+                if (selectedCity && cityCoordinates[selectedCity]) {
+                  fetchCityData(selectedCity);
+                }
+              }}
+              disabled={!map || loading || !selectedCity}
+              className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+            >
+              📊 Load Data
+            </button>
+            
+            <button
+              onClick={() => {
+                if (dataType === 'heat') removeHeatOverlay();
+                else if (dataType === 'airquality') removeAirQualityOverlay();
+                else if (dataType === 'population') removePopulationOverlay();
+              }}
+              disabled={!heatOverlay && !airQualityOverlay && !populationOverlay}
+              className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+            >
+              🗑️ Clear
+            </button>
+          </div>
         </div>
       </div>
 
