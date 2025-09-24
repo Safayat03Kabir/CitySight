@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import MonitoringMapComponent from "../../component/MonitoringMapComponent";
 
 export default function Monitoring() {
-  const [selectedTimeframe, setSelectedTimeframe] = useState("realtime");
   const [isVisible, setIsVisible] = useState(false);
   const [selectedStation, setSelectedStation] = useState<any>(null);
 
@@ -20,24 +19,6 @@ export default function Monitoring() {
   const handleStationClick = (station: any) => {
     setSelectedStation(station);
     console.log('Selected station:', station);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "online": return "bg-green-100 text-green-800";
-      case "warning": return "bg-yellow-100 text-yellow-800";
-      case "offline": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getAlertColor = (type: string) => {
-    switch (type.toLowerCase()) {
-      case "high priority": return "border-l-red-500 bg-red-50";
-      case "medium priority": return "border-l-yellow-500 bg-yellow-50";
-      case "low priority": return "border-l-blue-500 bg-blue-50";
-      default: return "border-l-gray-500 bg-gray-50";
-    }
   };
 
   return (
@@ -69,7 +50,7 @@ export default function Monitoring() {
         <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-emerald-200 rounded-full mix-blend-multiply filter blur-xl opacity-15 animate-pulse animation-delay-4000"></div>
       </div>
 
-      <div className="max-w-7xl mx-auto relative z-10">
+      <div className="w-full mx-auto relative z-10">
         {/* Monitoring Map */}
         <div className={`mb-8 transition-all duration-1000 delay-500 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           <MonitoringMapComponent 
@@ -78,71 +59,7 @@ export default function Monitoring() {
             selectedStation={selectedStation}
           />
         </div>
-
-        {/* Monitoring Stations */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Monitoring Stations</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {monitoringStations.map((station) => (
-              <div 
-                key={station.id} 
-                className={`bg-white rounded-lg shadow-md p-6 cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:scale-105 ${
-                  selectedStation?.id === station.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                }`}
-                onClick={() => handleStationClick(station)}
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">{station.name}</h3>
-                    <p className="text-sm text-gray-600">{station.type}</p>
-                    <p className="text-xs text-gray-500">{station.coordinates}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(station.status)}`}>
-                    {station.status}
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {Object.entries(station.readings).filter(([_, value]) => value !== undefined).map(([key, value]) => (
-                    <div key={key} className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600 capitalize">
-                        {key.replace(/([A-Z])/g, ' $1').trim()}
-                      </span>
-                      <span className="font-medium text-gray-800">
-                        {String(value)} {getUnit(key)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-xs text-gray-500">Last updated: {station.lastUpdate}</p>
-                  {selectedStation?.id === station.id && (
-                    <p className="text-xs text-blue-600 mt-1">📍 Selected on map</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );
-}
-
-function getUnit(parameter: string): string {
-  const units: { [key: string]: string } = {
-    pm25: "µg/m³",
-    pm10: "µg/m³",
-    no2: "µg/m³",
-    o3: "µg/m³",
-    so2: "µg/m³",
-    co2: "ppm",
-    ch4: "ppm",
-    temperature: "°C",
-    humidity: "%",
-    soilMoisture: "%",
-    uv: "index"
-  };
-  return units[parameter] || "";
 }

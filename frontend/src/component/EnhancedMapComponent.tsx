@@ -22,6 +22,22 @@ interface HeatYearPoint {
   hasData: boolean;
 }
 
+// Type definitions for air quality time series
+interface AirQualityYearPoint {
+  year: number;
+  meanNO2: number | null;
+  sampleCount: number;
+  hasData: boolean;
+}
+
+// Type definitions for population time series
+interface PopulationYearPoint {
+  year: number;
+  meanDensity: number | null;
+  totalPopulation: number | null;
+  hasData: boolean;
+}
+
 interface HeatStatistics {
   urbanMeanC: number;
   ruralMeanC: number;
@@ -89,6 +105,7 @@ interface AirQualityDataResponse {
   visualizationParams: VisualizationParams;
   overlayBounds: OverlayBounds;
   dateRange: DateRange;
+  timeSeries?: AirQualityYearPoint[];
 }
 
 interface PopulationDataResponse {
@@ -98,6 +115,7 @@ interface PopulationDataResponse {
   visualizationParams: VisualizationParams;
   overlayBounds: OverlayBounds;
   year: number;
+  timeSeries?: PopulationYearPoint[];
 }
 
 interface HeatMetadata {
@@ -148,6 +166,50 @@ const EnhancedMapComponent = () => {
   const [selectedYear, setSelectedYear] = useState<number>(2024);
   const [selectedPopulationYear, setSelectedPopulationYear] = useState<number>(2020);
   const [dataType, setDataType] = useState<'heat' | 'airquality' | 'population'>('heat');
+
+  // Time series state for progressive loading
+  const [timeSeriesLoading, setTimeSeriesLoading] = useState<boolean>(false);
+  const [heatTimeSeries, setHeatTimeSeries] = useState<HeatYearPoint[]>([]);
+  const [airQualityTimeSeries, setAirQualityTimeSeries] = useState<AirQualityYearPoint[]>([]);
+  const [populationTimeSeries, setPopulationTimeSeries] = useState<PopulationYearPoint[]>([]);
+
+  // City coordinates mapping for manual navigation
+  const cityCoordinates: { [key: string]: { lat: number; lng: number; zoom: number } } = {
+    'New York': { lat: 40.7128, lng: -74.0060, zoom: 10 },
+    'Los Angeles': { lat: 34.0522, lng: -118.2437, zoom: 10 },
+    'Chicago': { lat: 41.8781, lng: -87.6298, zoom: 10 },
+    'Dhaka': { lat: 23.8103, lng: 90.4125, zoom: 11 },
+    'Chittagong': { lat: 22.3569, lng: 91.7832, zoom: 11 }
+  };
+
+  // City boundaries for manual API calls (for cities not supported by name)
+  const cityBounds: { [key: string]: MapBounds } = {
+    'Dhaka': {
+      west: 90.3200,   // Western boundary
+      south: 23.7200,  // Southern boundary  
+      east: 90.5000,   // Eastern boundary
+      north: 23.9000   // Northern boundary
+    },
+    'Chittagong': {
+      west: 91.7000,   // Western boundary
+      south: 22.2500,  // Southern boundary
+      east: 91.8500,   // Eastern boundary  
+      north: 22.4500   // Northern boundary
+    }
+  };
+
+  /**
+   * Navigate to city coordinates
+   */
+  const navigateToCity = (cityName: string) => {
+    if (!map) return;
+    
+    const coords = cityCoordinates[cityName];
+    if (coords) {
+      map.setView([coords.lat, coords.lng], coords.zoom);
+      console.log(`🗺️ Navigated to ${cityName} at ${coords.lat}, ${coords.lng}`);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -314,6 +376,9 @@ const EnhancedMapComponent = () => {
       if (response.success && response.data) {
         setHeatData(response);
         await addHeatOverlayToMap(response.data);
+        
+        // Start fetching time series data in background
+        fetchTimeSeriesData(mapBounds, 'heat');
       } else {
         throw new Error('Invalid response format');
       }
@@ -361,6 +426,9 @@ const EnhancedMapComponent = () => {
       if (response.success && response.data) {
         setAirQualityData(response);
         await addAirQualityOverlayToMap(response.data);
+        
+        // Start fetching time series data in background
+        fetchTimeSeriesData(mapBounds, 'airquality');
       } else {
         throw new Error('Invalid response format');
       }
@@ -380,13 +448,26 @@ const EnhancedMapComponent = () => {
     setLoading(true);
     setError(null);
 
+    // Always navigate to the city first
+    navigateToCity(cityName);
+
     try {
       console.log('🏙️ Fetching heat data for city:', cityName);
 
       // Use selected year for date range
       const { startDate, endDate } = getDateRange();
 
-      const response = await HeatService.getCityHeatData(cityName, startDate, endDate) as HeatApiResponse;
+      let response: HeatApiResponse;
+
+      // For Dhaka and Chittagong, use bounds-based API call
+      if (cityBounds[cityName]) {
+        console.log(`🌐 Using bounds-based API call for ${cityName}`);
+        const bounds = cityBounds[cityName];
+        response = await HeatService.getHeatData(bounds, startDate, endDate) as HeatApiResponse;
+      } else {
+        // For other cities, use city name API call
+        response = await HeatService.getCityHeatData(cityName, startDate, endDate) as HeatApiResponse;
+      }
 
       console.log('📥 City heat data received:', response);
 
@@ -403,6 +484,15 @@ const EnhancedMapComponent = () => {
           map.fitBounds(bounds);
           console.log('🔍 Zoomed to city bounds');
         }
+
+        // Start fetching time series data in background using city bounds or request bounds
+        const boundsForTimeSeries = cityBounds[cityName] || {
+          west: response.data.bounds.west,
+          south: response.data.bounds.south,
+          east: response.data.bounds.east,
+          north: response.data.bounds.north
+        };
+        fetchTimeSeriesData(boundsForTimeSeries, 'heat');
       } else {
         throw new Error('Invalid response format');
       }
@@ -422,6 +512,9 @@ const EnhancedMapComponent = () => {
     setLoading(true);
     setError(null);
 
+    // Always navigate to the city first
+    navigateToCity(cityName);
+
     try {
       console.log('🏙️ Fetching air quality data for city:', cityName);
 
@@ -429,7 +522,17 @@ const EnhancedMapComponent = () => {
       const startDate = "2024-01-01";
       const endDate = "2024-08-01";
 
-      const response = await AirQualityService.getCityAirQualityData(cityName, startDate, endDate) as AirQualityApiResponse;
+      let response: AirQualityApiResponse;
+
+      // For Dhaka and Chittagong, use bounds-based API call
+      if (cityBounds[cityName]) {
+        console.log(`🌐 Using bounds-based API call for ${cityName}`);
+        const bounds = cityBounds[cityName];
+        response = await AirQualityService.getAirQualityData(bounds, startDate, endDate) as AirQualityApiResponse;
+      } else {
+        // For other cities, use city name API call
+        response = await AirQualityService.getCityAirQualityData(cityName, startDate, endDate) as AirQualityApiResponse;
+      }
 
       console.log('📥 City air quality data received:', response);
 
@@ -446,6 +549,15 @@ const EnhancedMapComponent = () => {
           map.fitBounds(bounds);
           console.log('🔍 Zoomed to city bounds');
         }
+
+        // Start fetching time series data in background using city bounds or request bounds
+        const boundsForTimeSeries = cityBounds[cityName] || {
+          west: response.data.bounds.west,
+          south: response.data.bounds.south,
+          east: response.data.bounds.east,
+          north: response.data.bounds.north
+        };
+        fetchTimeSeriesData(boundsForTimeSeries, 'airquality');
       } else {
         throw new Error('Invalid response format');
       }
@@ -489,6 +601,9 @@ const EnhancedMapComponent = () => {
       if (response.success && response.data) {
         setPopulationData(response);
         await addPopulationOverlayToMap(response.data);
+        
+        // Start fetching time series data in background
+        fetchTimeSeriesData(mapBounds, 'population');
       } else {
         throw new Error('Invalid response format');
       }
@@ -508,10 +623,23 @@ const EnhancedMapComponent = () => {
     setLoading(true);
     setError(null);
 
+    // Always navigate to the city first
+    navigateToCity(cityName);
+
     try {
       console.log('🏙️ Fetching population data for city:', cityName);
 
-      const response = await PopulationService.getCityPopulationData(cityName, selectedPopulationYear) as PopulationApiResponse;
+      let response: PopulationApiResponse;
+
+      // For Dhaka and Chittagong, use bounds-based API call
+      if (cityBounds[cityName]) {
+        console.log(`🌐 Using bounds-based API call for ${cityName}`);
+        const bounds = cityBounds[cityName];
+        response = await PopulationService.getPopulationData(bounds, selectedPopulationYear) as PopulationApiResponse;
+      } else {
+        // For other cities, use city name API call
+        response = await PopulationService.getCityPopulationData(cityName, selectedPopulationYear) as PopulationApiResponse;
+      }
 
       console.log('📥 City population data received:', response);
 
@@ -528,6 +656,15 @@ const EnhancedMapComponent = () => {
           map.fitBounds(bounds);
           console.log('🔍 Zoomed to city bounds');
         }
+
+        // Start fetching time series data in background using city bounds or request bounds
+        const boundsForTimeSeries = cityBounds[cityName] || {
+          west: response.data.bounds.west,
+          south: response.data.bounds.south,
+          east: response.data.bounds.east,
+          north: response.data.bounds.north
+        };
+        fetchTimeSeriesData(boundsForTimeSeries, 'population');
       } else {
         throw new Error('Invalid response format');
       }
@@ -751,6 +888,195 @@ const EnhancedMapComponent = () => {
   };
 
   /**
+   * Fetch data for current bounds based on selected data type
+   */
+  const fetchDataForCurrentBounds = async () => {
+    if (!map) {
+      setError('Map not initialized');
+      return;
+    }
+
+    switch (dataType) {
+      case 'heat':
+        await fetchHeatDataForCurrentBounds();
+        break;
+      case 'airquality':
+        await fetchAirQualityDataForCurrentBounds();
+        break;
+      case 'population':
+        await fetchPopulationDataForCurrentBounds();
+        break;
+      default:
+        setError('Invalid data type selected');
+    }
+  };
+
+  /**
+   * Fetch city data based on selected data type
+   */
+  const fetchCityData = async (cityName: string) => {
+    if (!map) {
+      setError('Map not initialized');
+      return;
+    }
+
+    switch (dataType) {
+      case 'heat':
+        await fetchCityHeatData(cityName);
+        break;
+      case 'airquality':
+        await fetchCityAirQualityData(cityName);
+        break;
+      case 'population':
+        await fetchCityPopulationData(cityName);
+        break;
+      default:
+        setError('Invalid data type selected');
+    }
+  };
+
+  /**
+   * Fetch time series data progressively starting from selected year
+   */
+  const fetchTimeSeriesData = async (bounds: MapBounds, currentDataType: 'heat' | 'airquality' | 'population') => {
+    if (timeSeriesLoading) return;
+
+    setTimeSeriesLoading(true);
+    
+    try {
+      const startYear = currentDataType === 'population' ? selectedPopulationYear : selectedYear;
+      const endYear = 2024;
+      const baseYear = currentDataType === 'population' ? 2000 : 2000; // Population data starts from 2000
+      
+      // Clear existing time series for the current data type
+      switch (currentDataType) {
+        case 'heat':
+          setHeatTimeSeries([]);
+          break;
+        case 'airquality':
+          setAirQualityTimeSeries([]);
+          break;
+        case 'population':
+          setPopulationTimeSeries([]);
+          break;
+      }
+
+      // Create arrays to fetch years in order of priority (selected year first)
+      const yearsToFetch: number[] = [];
+      
+      // Add selected year first
+      yearsToFetch.push(startYear);
+      
+      // Add years around the selected year in expanding pattern
+      for (let offset = 1; offset <= Math.max(startYear - baseYear, endYear - startYear); offset++) {
+        if (startYear - offset >= baseYear) {
+          yearsToFetch.push(startYear - offset);
+        }
+        if (startYear + offset <= endYear) {
+          yearsToFetch.push(startYear + offset);
+        }
+      }
+
+      // Remove duplicates and sort
+      const uniqueYears = [...new Set(yearsToFetch)].sort((a, b) => {
+        // Prioritize selected year and nearby years
+        const distA = Math.abs(a - startYear);
+        const distB = Math.abs(b - startYear);
+        return distA - distB;
+      });
+
+      // Fetch data for each year progressively
+      for (const year of uniqueYears) {
+        try {
+          let yearData: HeatYearPoint | AirQualityYearPoint | PopulationYearPoint | null = null;
+
+          switch (currentDataType) {
+            case 'heat': {
+              const startDate = `${year}-01-01`;
+              const endDate = `${year}-08-01`;
+              const response = await HeatService.getHeatData(bounds, startDate, endDate) as HeatApiResponse;
+              
+              if (response.success && response.data.statistics) {
+                yearData = {
+                  year,
+                  meanC: response.data.statistics.urbanMeanC,
+                  sampleCount: response.data.statistics.imageCount,
+                  hasData: response.data.statistics.imageCount > 0
+                } as HeatYearPoint;
+              }
+              break;
+            }
+            case 'airquality': {
+              const startDate = `${year}-01-01`;
+              const endDate = `${year}-08-01`;
+              const response = await AirQualityService.getAirQualityData(bounds, startDate, endDate) as AirQualityApiResponse;
+              
+              if (response.success && response.data.statistics) {
+                yearData = {
+                  year,
+                  meanNO2: response.data.statistics.urbanMeanNO2,
+                  sampleCount: response.data.statistics.no2ImageCount,
+                  hasData: response.data.statistics.no2ImageCount > 0
+                } as AirQualityYearPoint;
+              }
+              break;
+            }
+            case 'population': {
+              const response = await PopulationService.getPopulationData(bounds, year) as PopulationApiResponse;
+              
+              if (response.success && response.data.statistics) {
+                yearData = {
+                  year,
+                  meanDensity: response.data.statistics.urbanMeanDensity,
+                  totalPopulation: response.data.statistics.estimatedTotalPopulation,
+                  hasData: response.data.statistics.estimatedTotalPopulation > 0
+                } as PopulationYearPoint;
+              }
+              break;
+            }
+          }
+
+          // Add data point to the appropriate time series
+          if (yearData) {
+            switch (currentDataType) {
+              case 'heat':
+                setHeatTimeSeries(prev => {
+                  const updated = [...prev, yearData as HeatYearPoint].sort((a, b) => a.year - b.year);
+                  return updated;
+                });
+                break;
+              case 'airquality':
+                setAirQualityTimeSeries(prev => {
+                  const updated = [...prev, yearData as AirQualityYearPoint].sort((a, b) => a.year - b.year);
+                  return updated;
+                });
+                break;
+              case 'population':
+                setPopulationTimeSeries(prev => {
+                  const updated = [...prev, yearData as PopulationYearPoint].sort((a, b) => a.year - b.year);
+                  return updated;
+                });
+                break;
+            }
+          }
+
+          // Add a small delay to allow UI to update and show progressive loading
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+        } catch (yearError) {
+          console.warn(`⚠️ Error fetching ${currentDataType} data for year ${year}:`, yearError);
+          // Continue with next year instead of stopping
+        }
+      }
+
+    } catch (error) {
+      console.error(`❌ Error in time series fetch for ${currentDataType}:`, error);
+    } finally {
+      setTimeSeriesLoading(false);
+    }
+  };
+
+  /**
    * Format date for display
    */
   const formatDate = (dateString: string) => {
@@ -765,7 +1091,7 @@ const EnhancedMapComponent = () => {
   };
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="w-full min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-6">
       {/* Enhanced CSS */}
       <style jsx>{`
         .slider::-webkit-slider-thumb {
@@ -829,282 +1155,364 @@ const EnhancedMapComponent = () => {
         }
       `}</style>
       
-      {/* Control Panel */}
-      <div className="mb-8 p-8 bg-gradient-to-br from-white via-blue-50 to-purple-50 rounded-2xl shadow-2xl border border-blue-100 backdrop-blur-sm">
-        <div className="flex items-center mb-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-2xl">🌍</span>
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Environmental Data Analysis
-              </h3>
-              <p className="text-sm text-gray-600 mt-1">Explore urban heat islands and air quality patterns</p>
-            </div>
-          </div>
-        </div>
-        
-        {/* Year Slider */}
-        <div className="mb-8 p-6 bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 rounded-2xl border border-indigo-200 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-xl">📅</span>
+      {/* Top Row: Map and Control Panel */}
+      <div className="flex flex-col lg:flex-row gap-6 mb-8">
+        {/* Map Container - Left side */}
+        <div className="flex-1 lg:w-3/4">
+          <div className="p-6 bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <span className="text-xl">🗺️</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    Enviroment Monitoring Map
+                  </h3>
+                </div>
               </div>
-              <div>
-                <label htmlFor="year-slider" className="text-lg font-semibold text-gray-800">
-                  Select Analysis Year
-                </label>
-                <p className="text-sm text-gray-600">Choose the year for environmental data analysis</p>
-              </div>
+              {(heatData || airQualityData) && (
+                <div className="text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
+                  Data Loaded ✓
+                </div>
+              )}
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-                {selectedYear}
-              </div>
-              <div className="text-sm text-gray-500">Selected Year</div>
-            </div>
-          </div>
-          
-          <div className="relative">
-            <input
-              id="year-slider"
-              type="range"
-              min="2000"
-              max="2024"
-              value={selectedYear}
-              onChange={handleYearChange}
-              className="w-full h-3 bg-gradient-to-r from-indigo-200 to-blue-200 rounded-full appearance-none cursor-pointer slider shadow-inner"
-              style={{
-                background: `linear-gradient(to right, #4f46e5 0%, #3b82f6 ${((selectedYear - 2000) / 24) * 100}%, #e0e7ff ${((selectedYear - 2000) / 24) * 100}%, #dbeafe 100%)`
-              }}
+            <div 
+              id="heat-map" 
+              key="heat-map-container"
+              className="w-full h-[600px] rounded-xl border-2 border-gray-300 shadow-inner bg-gray-100"
+              style={{ minHeight: '600px' }}
             />
-            
-            {/* Year markers */}
-            <div className="flex justify-between text-xs font-medium text-gray-500 mt-2">
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2000</span>
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2005</span>
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2010</span>
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2015</span>
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2020</span>
-              <span className="bg-white px-2 py-1 rounded-full shadow-sm">2024</span>
-            </div>
-          </div>
-          
-          {/* Date range display */}
-          <div className="mt-4 p-3 bg-white/70 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm">
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                <span className="font-medium text-gray-700">Analysis Period:</span>
-              </div>
-              <span className="font-semibold text-indigo-600">
-                {getDateRange().startDate} to {getDateRange().endDate}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Data Type Selector */}
-        <div className="mb-6 p-6 bg-gradient-to-r from-slate-50 via-gray-50 to-zinc-50 rounded-2xl border border-gray-200 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-slate-500 to-gray-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-xl">📊</span>
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold text-gray-800">Select Data Type</h4>
-                <p className="text-sm text-gray-600">Choose between heat island, air quality, or population analysis</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={() => setDataType('heat')}
-              className={`px-4 py-2 rounded-md transition-colors ${
-                dataType === 'heat' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
-              }`}
-            >
-              �️ Heat Island Data
-            </button>
-            
-            <button
-              onClick={() => setDataType('airquality')}
-              className={`px-4 py-2 rounded-md transition-colors ${
-                dataType === 'airquality' 
-                  ? 'bg-purple-600 text-white' 
-                  : 'bg-white text-purple-600 border border-purple-600 hover:bg-purple-50'
-              }`}
-            >
-              🌬️ Air Quality Data
-            </button>
-            
-            <button
-              onClick={() => setDataType('population')}
-              className={`px-4 py-2 rounded-md transition-colors ${
-                dataType === 'population' 
-                  ? 'bg-green-600 text-white' 
-                  : 'bg-white text-green-600 border border-green-600 hover:bg-green-50'
-              }`}
-            >
-              👥 Population Data
-            </button>
           </div>
         </div>
 
-        {/* Heat Data Controls */}
-        {dataType === 'heat' && (
-          <div className="flex flex-wrap gap-4 mb-6">
-            <button
-              onClick={fetchHeatDataForCurrentBounds}
-              disabled={loading || !map}
-              className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-blue-500/25"
-            >
-              {loading ? '🔄 Loading...' : `🔍 Show Heat Data (${selectedYear})`}
-            </button>
+        {/* Control Panel - Rightside */}
+        <div className="lg:w-1/5 lg:h-[705px]">
+          <div className="p-2 bg-gradient-to-br from-white via-blue-50 to-purple-50 rounded-2xl shadow-2xl border border-blue-100 h-full flex flex-col">
+            <div className="flex items-center mb-1">
+              <div className="flex items-center space-x-1">
+                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
+                  <span className="text-lg">⚙️</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    Controls
+                  </h2>
+                  <p className="text-base text-gray-600">Data analysis</p>
+                </div>
+              </div>
+            </div>
             
-            <button
-              onClick={() => fetchCityHeatData('New York')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🏙️ New York ({selectedYear})
-            </button>
-            
-            <button
-              onClick={() => fetchCityHeatData('Los Angeles')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🌴 Los Angeles ({selectedYear})
-            </button>
-            
-            <button
-              onClick={() => fetchCityHeatData('Chicago')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🌬️ Chicago ({selectedYear})
-            </button>
-            
-            <button
-              onClick={removeHeatOverlay}
-              disabled={!heatOverlay}
-              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
-            >
-              🗑️ Clear Heat Layer
-            </button>
-          </div>
-        )}
-
-        {/* Air Quality Data Controls */}
-        {dataType === 'airquality' && (
-          <div className="flex flex-wrap gap-4 mb-6">
-            <button
-              onClick={fetchAirQualityDataForCurrentBounds}
-              disabled={loading || !map}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/25"
-            >
-              {loading ? '🔄 Loading...' : '🔍 Show Air Quality (2024)'}
-            </button>
-            
-            <button
-              onClick={() => fetchCityAirQualityData('New York')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🏙️ New York (2024)
-            </button>
-            
-            <button
-              onClick={() => fetchCityAirQualityData('Los Angeles')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🌴 Los Angeles (2024)
-            </button>
-            
-            <button
-              onClick={() => fetchCityAirQualityData('Chicago')}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
-            >
-              🌬️ Chicago (2024)
-            </button>
-            
-            <button
-              onClick={removeAirQualityOverlay}
-              disabled={!airQualityOverlay}
-              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
-            >
-              🗑️ Clear Air Quality Layer
-            </button>
-          </div>
-        )}
-
-        {/* Population Data Controls */}
-        {dataType === 'population' && (
-          <div className="space-y-6 mb-6">
-            {/* Population Year Selector */}
-            <div className="p-4 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 rounded-xl border border-green-200 shadow-lg">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center shadow-md">
-                    <span className="text-lg">📅</span>
+            {/* Data Type Selector */}
+            <div className="mb-2 p-1.5 bg-gradient-to-r from-slate-50 via-gray-50 to-zinc-50 rounded-lg border border-gray-200 shadow-lg">
+              <div className="flex items-center mb-1">
+                <div className="flex items-center space-x-1">
+                  <div className="w-7 h-7 bg-gradient-to-r from-gray-500 to-slate-600 rounded flex items-center justify-center shadow">
+                    <span className="text-white text-base">📊</span>
                   </div>
                   <div>
-                    <label htmlFor="population-year" className="text-md font-semibold text-gray-800">
-                      Population Data Year
-                    </label>
-                    <p className="text-sm text-gray-600">NASA SEDAC GPW available years</p>
+                    <h4 className="text-base font-semibold text-gray-800">Data Type</h4>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() => setDataType('heat')}
+                  className={`px-4 py-2.5 rounded-md transition-colors text-base ${
+                    dataType === 'heat' 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
+                  }`}
+                >
+                  🌡️ Heat Data
+                </button>
+                
+                <button
+                  onClick={() => setDataType('airquality')}
+                  className={`px-4 py-2.5 rounded-md transition-colors text-base ${
+                    dataType === 'airquality' 
+                      ? 'bg-purple-600 text-white' 
+                      : 'bg-white text-purple-600 border border-purple-600 hover:bg-purple-50'
+                  }`}
+                >
+                  🌬️ Air Quality
+                </button>
+                
+                <button
+                  onClick={() => setDataType('population')}
+                  className={`px-4 py-2.5 rounded-md transition-colors text-base ${
+                    dataType === 'population' 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-white text-green-600 border border-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  👥 Population
+                </button>
+              </div>
+            </div>
+
+            {/* Year Slider */}
+            <div className="mb-2 p-1.5 bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 rounded-lg border border-indigo-200 shadow-lg">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center space-x-1">
+                  <div className="w-7 h-7 bg-gradient-to-r from-indigo-500 to-blue-500 rounded flex items-center justify-center shadow">
+                    <span className="text-white text-base">📅</span>
+                  </div>
+                  <div>
+                    <h4 className="text-base font-semibold text-gray-800">Year</h4>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                    {selectedPopulationYear}
+                  <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+                    {selectedYear}
                   </div>
                 </div>
               </div>
               
-              <select
-                id="population-year"
-                value={selectedPopulationYear}
-                onChange={handlePopulationYearChange}
-                className="w-full p-3 bg-white border border-green-300 rounded-lg shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
-              >
-                <option value={2000}>2000</option>
-                <option value={2005}>2005</option>
-                <option value={2010}>2010</option>
-                <option value={2015}>2015</option>
-                <option value={2020}>2020</option>
-                <option value={2025}>2025</option>
-              </select>
+              <div className="relative mb-1">
+                <input
+                  id="year-slider"
+                  type="range"
+                  min="2000"
+                  max="2024"
+                  value={selectedYear}
+                  onChange={handleYearChange}
+                  className="w-full h-1.5 bg-gradient-to-r from-indigo-200 to-blue-200 rounded-full appearance-none cursor-pointer slider shadow-inner"
+                  style={{
+                    background: `linear-gradient(to right, #4f46e5 0%, #3b82f6 ${((selectedYear - 2000) / 24) * 100}%, #e0e7ff ${((selectedYear - 2000) / 24) * 100}%, #dbeafe 100%)`
+                  }}
+                />
+                
+                <div className="flex justify-between text-sm font-medium text-gray-500 mt-0.5">
+                  <span className="bg-white px-1 py-0.5 rounded shadow-sm text-sm">2000</span>
+                  <span className="bg-white px-1 py-0.5 rounded shadow-sm text-sm">2024</span>
+                </div>
+              </div>
+              
+              {/* Date range display */}
+              <div className="p-1 bg-white/70 backdrop-blur-sm rounded-md border border-white/20 shadow-sm">
+                <div className="text-base">
+                  <div className="flex items-center space-x-1">
+                    <span className="w-1 h-1 bg-green-500 rounded-full"></span>
+                    <span className="font-medium text-gray-700">Period:</span>
+                  </div>
+                  <span className="font-semibold text-indigo-600 text-base">
+                    {getDateRange().startDate} to {getDateRange().endDate}
+                  </span>
+                </div>
+              </div>
             </div>
-            
-            {/* Population Control Buttons */}
-            <div className="flex flex-wrap gap-4">
+
+            {/* Population Year Selector - Only show when population is selected */}
+            {dataType === 'population' && (
+              <div className="mb-2 p-1.5 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 rounded-lg border border-green-200 shadow-lg">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center space-x-1">
+                    <div className="w-7 h-7 bg-gradient-to-r from-green-500 to-emerald-500 rounded flex items-center justify-center shadow">
+                      <span className="text-white text-base">📅</span>
+                    </div>
+                    <div>
+                      <label htmlFor="population-year" className="text-base font-semibold text-gray-800">
+                        Pop Year
+                      </label>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                      {selectedPopulationYear}
+                    </div>
+                  </div>
+                </div>
+                
+                <select
+                  id="population-year"
+                  value={selectedPopulationYear}
+                  onChange={handlePopulationYearChange}
+                  className="w-full p-2.5 bg-white border border-green-300 rounded-md shadow-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors text-base"
+                >
+                  <option value={2000}>2000</option>
+                  <option value={2005}>2005</option>
+                  <option value={2010}>2010</option>
+                  <option value={2015}>2015</option>
+                  <option value={2020}>2020</option>
+                  <option value={2025}>2025</option>
+                </select>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="space-y-1 flex-1 flex flex-col justify-end">
               <button
-                onClick={fetchPopulationDataForCurrentBounds}
+                onClick={fetchDataForCurrentBounds}
                 disabled={loading || !map}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-green-500/25"
+                className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow text-base"
               >
-                {loading ? '🔄 Loading...' : `🔍 Show Population (${selectedPopulationYear})`}
+                {loading ? '⏳ Loading...' : '🔍 Analyze Current View'}
               </button>
               
               <button
-                onClick={() => fetchCityPopulationData('New York')}
+                onClick={removeAllOverlays}
+                disabled={!heatOverlay && !airQualityOverlay && !populationOverlay}
+                className="w-full px-4 py-2.5 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-md hover:from-gray-600 hover:to-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow text-base"
+              >
+                🧹 Clear All Layers
+              </button>
+
+              {/* Error Display */}
+              {error && (
+                <div className="mt-1 p-2.5 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 text-red-700 rounded-md">
+                  <div className="text-base font-medium">⚠️ {error}</div>
+                </div>
+              )}
+
+              {/* Loading State */}
+              {loading && (
+                <div className="mt-1 p-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 rounded-md">
+                  <div className="flex items-center space-x-1 mb-0.5">
+                    <div className="w-3 h-3 border border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+                    <div className="text-base font-medium">Processing...</div>
+                  </div>
+                  <div className="text-base font-medium leading-tight">This may take 10-30 secs depending on the selected area and the data of that area</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Middle Row: Data City Controls */}
+      <div className="mb-8">
+        <div className="p-6 bg-gradient-to-r from-white via-gray-50 to-slate-100 rounded-2xl shadow-2xl border border-gray-200">
+          <div className="flex items-center mb-6">
+            <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center shadow-lg mr-3">
+              <span className="text-xl">🏙️</span>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                City Data Analysis
+              </h3>
+              <p className="text-gray-600 mt-1">Quick access to major city environmental data</p>
+            </div>
+          </div>
+
+          {/* City Control Buttons based on data type */}
+          {dataType === 'heat' && (
+            <div className="flex flex-wrap gap-4">
+              <button
+                onClick={() => fetchCityData('New York')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-blue-500/25"
+              >
+                🏙️ New York ({selectedYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Los Angeles')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-orange-500/25"
+              >
+                🌴 Los Angeles ({selectedYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Chicago')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-indigo-500/25"
+              >
+                🌬️ Chicago ({selectedYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Dhaka')}
                 disabled={loading}
                 className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
+              >
+                🏛️ Dhaka ({selectedYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Chittagong')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
+              >
+                🏢 Chittagong ({selectedYear})
+              </button>
+              
+              <button
+                onClick={removeHeatOverlay}
+                disabled={!heatOverlay}
+                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
+              >
+                🗑️ Clear Heat Layer
+              </button>
+            </div>
+          )}
+
+          {dataType === 'airquality' && (
+            <div className="flex flex-wrap gap-4">
+              <button
+                onClick={() => fetchCityData('New York')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-purple-500/25"
+              >
+                🏙️ New York (2024)
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Los Angeles')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-violet-500 to-violet-600 text-white rounded-xl hover:from-violet-600 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-violet-500/25"
+              >
+                🌴 Los Angeles (2024)
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Chicago')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-pink-500 to-pink-600 text-white rounded-xl hover:from-pink-600 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-pink-500/25"
+              >
+                🌬️ Chicago (2024)
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Dhaka')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
+              >
+                🏛️ Dhaka (2024)
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Chittagong')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
+              >
+                🏢 Chittagong (2024)
+              </button>
+              
+              <button
+                onClick={removeAirQualityOverlay}
+                disabled={!airQualityOverlay}
+                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25"
+              >
+                🗑️ Clear Air Quality Layer
+              </button>
+            </div>
+          )}
+
+          {dataType === 'population' && (
+            <div className="flex flex-wrap gap-4">
+              <button
+                onClick={() => fetchCityData('New York')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-green-500/25"
               >
                 🏙️ New York ({selectedPopulationYear})
               </button>
               
               <button
-                onClick={() => fetchCityPopulationData('Los Angeles')}
+                onClick={() => fetchCityData('Los Angeles')}
                 disabled={loading}
                 className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
               >
@@ -1112,11 +1520,27 @@ const EnhancedMapComponent = () => {
               </button>
               
               <button
-                onClick={() => fetchCityPopulationData('Chicago')}
+                onClick={() => fetchCityData('Chicago')}
                 disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-emerald-500/25"
+                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl hover:from-teal-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-teal-500/25"
               >
                 🌬️ Chicago ({selectedPopulationYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Dhaka')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-xl hover:from-cyan-600 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-cyan-500/25"
+              >
+                🏛️ Dhaka ({selectedPopulationYear})
+              </button>
+              
+              <button
+                onClick={() => fetchCityData('Chittagong')}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-sky-500 to-sky-600 text-white rounded-xl hover:from-sky-600 hover:to-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-sky-500/25"
+              >
+                🏢 Chittagong ({selectedPopulationYear})
               </button>
               
               <button
@@ -1127,103 +1551,14 @@ const EnhancedMapComponent = () => {
                 🗑️ Clear Population Layer
               </button>
             </div>
-          </div>
-        )}
-
-        <button
-          onClick={removeAllOverlays}
-          disabled={!heatOverlay && !airQualityOverlay && !populationOverlay}
-          className="mb-6 px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg shadow-gray-500/25"
-        >
-          🧹 Clear All Layers
-        </button>
-
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6 p-6 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 text-red-700 rounded-2xl shadow-lg">
-            <div className="flex items-start space-x-4">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-gradient-to-r from-red-500 to-red-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xl">❌</span>
-                </div>
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-lg text-red-800 mb-2">Something went wrong</div>
-                <div className="text-red-600 bg-white/50 p-3 rounded-lg border border-red-100">
-                  {error}
-                </div>
-                <div className="mt-3 text-sm text-red-600">
-                  💡 <span className="font-medium">Tip:</span> Try refreshing the page or checking your internet connection
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 text-blue-700 rounded-2xl shadow-lg">
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
-                  <div className="animate-spin text-white text-xl">🔄</div>
-                </div>
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-lg text-blue-800 mb-2">
-                  Processing Environmental Data
-                </div>
-                <div className="text-blue-600 bg-white/50 p-3 rounded-lg border border-blue-100">
-                  Fetching {dataType === 'heat' ? 'heat island' : dataType === 'airquality' ? 'air quality' : 'population'} data from satellite imagery...
-                </div>
-                <div className="mt-3 text-sm text-blue-600">
-                  ⏱️ This usually takes 10-30 seconds depending on the data complexity
-                </div>
-              </div>
-            </div>
-            
-            {/* Loading Progress Bar */}
-            <div className="mt-4">
-              <div className="w-full bg-blue-200 rounded-full h-2">
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full animate-pulse"></div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Map Container */}
-      <div className="mb-8">
-        <div className="p-6 bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-xl">🗺️</span>
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold text-gray-800">Interactive Environmental Map</h4>
-                <p className="text-sm text-gray-600">Satellite-based analysis visualization</p>
-              </div>
-            </div>
-            {(heatData || airQualityData) && (
-              <div className="flex items-center space-x-2 px-3 py-1 bg-green-100 rounded-full">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-sm text-green-700 font-medium">Data Loaded</span>
-              </div>
-            )}
-          </div>
-          <div 
-            id="heat-map" 
-            key="heat-map-container"
-            className="w-full h-[800px] rounded-xl border-2 border-gray-300 shadow-inner bg-gray-100"
-            style={{ minHeight: '800px' }}
-          />
+          )}
         </div>
       </div>
 
+      {/* Bottom Row: Analysis Data Statistics */}
       {/* Heat Data Statistics - Enhanced Display */}
       {heatData && heatData.success && heatData.data && (
-        <div className="bg-gradient-to-br from-white via-orange-50 to-red-50 rounded-2xl shadow-2xl p-8 border border-orange-200">
+        <div className="mb-8 bg-gradient-to-br from-white via-orange-50 to-red-50 rounded-2xl shadow-2xl p-8 border border-orange-200">
           <div className="flex items-center space-x-4 mb-8">
             <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl flex items-center justify-center shadow-lg">
               <span className="text-2xl">🌡️</span>
@@ -1320,15 +1655,18 @@ const EnhancedMapComponent = () => {
           </div>
 
           {/* Yearly Temperature Time Series */}
-          {heatData?.data?.timeSeries && heatData.data.timeSeries.length > 0 ? (
+          {(heatData?.data?.timeSeries && heatData.data.timeSeries.length > 0) || (heatTimeSeries && heatTimeSeries.length > 0) ? (
             <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 shadow mb-8">
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-medium text-gray-700">Yearly Mean Temperature</div>
                 <div className="text-xs text-gray-500">Hot-season AOI mean (°C)</div>
+                {timeSeriesLoading && (
+                  <div className="text-xs text-blue-500 animate-pulse">Loading data...</div>
+                )}
               </div>
               <div style={{ width: '100%', height: 320 }}>
                 <ResponsiveContainer>
-                  <LineChart data={heatData.data.timeSeries}>
+                  <LineChart data={heatTimeSeries.length > 0 ? heatTimeSeries : heatData?.data?.timeSeries || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="year" tickMargin={8} />
                     <YAxis
@@ -1365,7 +1703,7 @@ const EnhancedMapComponent = () => {
                       dot={{ r: 3, fill: '#f59e0b' }}
                       stroke="#f59e0b"
                       strokeWidth={2}
-                      isAnimationActive={false}
+                      isAnimationActive={true}
                     />
                     {/* Optional: highlight selected year */}
                     <ReferenceLine 
@@ -1379,12 +1717,13 @@ const EnhancedMapComponent = () => {
                 </ResponsiveContainer>
               </div>
               <div className="mt-2 text-xs text-gray-500">
-                Gaps indicate years with no valid observations (clouds/QA mask). Red line shows selected year.
+                Gaps indicate years with no valid observations (clouds/QA mask). Red line shows selected year. 
+                {timeSeriesLoading && " Data is loading progressively..."}
               </div>
             </div>
           ) : (
             <div className="mt-8 text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mb-8">
-              No time series available for this area/date range.
+              {timeSeriesLoading ? "Loading time series data..." : "No time series available for this area/date range."}
             </div>
           )}
 
@@ -1460,7 +1799,7 @@ const EnhancedMapComponent = () => {
 
       {/* Air Quality Data Statistics - Enhanced Display */}
       {airQualityData && airQualityData.success && airQualityData.data && (
-        <div className="bg-gradient-to-br from-white via-purple-50 to-indigo-50 rounded-2xl shadow-2xl p-8 border border-purple-200">
+        <div className="mb-8 bg-gradient-to-br from-white via-purple-50 to-indigo-50 rounded-2xl shadow-2xl p-8 border border-purple-200">
           <div className="flex items-center space-x-4 mb-8">
             <div className="w-14 h-14 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg">
               <span className="text-2xl">🌬️</span>
@@ -1594,6 +1933,77 @@ const EnhancedMapComponent = () => {
                   <div className="font-medium font-mono text-xs">{airQualityData.metadata.requestId}</div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Yearly Air Quality Time Series */}
+          {airQualityTimeSeries && airQualityTimeSeries.length > 0 ? (
+            <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 shadow mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-gray-700">Yearly Mean NO₂ Concentration</div>
+                <div className="text-xs text-gray-500">Annual AOI mean (×10⁻⁶ mol/m²)</div>
+                {timeSeriesLoading && (
+                  <div className="text-xs text-blue-500 animate-pulse">Loading data...</div>
+                )}
+              </div>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <LineChart data={airQualityTimeSeries}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="year" tickMargin={8} />
+                    <YAxis
+                      tickMargin={8}
+                      label={{ value: 'NO₂ (×10⁻⁶ mol/m²)', angle: -90, position: 'insideLeft' }}
+                      allowDecimals
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length > 0) {
+                          const data = payload[0].payload as AirQualityYearPoint;
+                          return (
+                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                              <p className="font-medium text-gray-900">{`Year: ${label}`}</p>
+                              {data.hasData ? (
+                                <>
+                                  <p className="text-purple-600">{`Mean NO₂: ${data.meanNO2?.toFixed(3)} ×10⁻⁶ mol/m²`}</p>
+                                  <p className="text-gray-600 text-sm">{`Samples: ${data.sampleCount} images`}</p>
+                                </>
+                              ) : (
+                                <p className="text-gray-500">No data available</p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Line
+                      type="linear"
+                      dataKey="meanNO2"
+                      connectNulls={false}
+                      dot={{ r: 3, fill: '#8b5cf6' }}
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      isAnimationActive={true}
+                    />
+                    <ReferenceLine 
+                      x={selectedYear} 
+                      strokeDasharray="4 4" 
+                      stroke="#ef4444"
+                      strokeWidth={1}
+                      label={{ value: `${selectedYear}`, position: 'top' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                NO₂ concentration trends over time. Red line shows selected year. 
+                {timeSeriesLoading && " Data is loading progressively..."}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-8 text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mb-8">
+              {timeSeriesLoading ? "Loading air quality time series data..." : "No air quality time series available for this area/date range."}
             </div>
           )}
 
@@ -1731,6 +2141,77 @@ const EnhancedMapComponent = () => {
                   <div className="font-medium">UN-adjusted estimates</div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Yearly Population Time Series */}
+          {populationTimeSeries && populationTimeSeries.length > 0 ? (
+            <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6 shadow mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-gray-700">Yearly Population Density</div>
+                <div className="text-xs text-gray-500">People per km²</div>
+                {timeSeriesLoading && (
+                  <div className="text-xs text-blue-500 animate-pulse">Loading data...</div>
+                )}
+              </div>
+              <div style={{ width: '100%', height: 320 }}>
+                <ResponsiveContainer>
+                  <LineChart data={populationTimeSeries}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="year" tickMargin={8} />
+                    <YAxis
+                      tickMargin={8}
+                      label={{ value: 'Population Density (people/km²)', angle: -90, position: 'insideLeft' }}
+                      allowDecimals
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length > 0) {
+                          const data = payload[0].payload as PopulationYearPoint;
+                          return (
+                            <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                              <p className="font-medium text-gray-900">{`Year: ${label}`}</p>
+                              {data.hasData ? (
+                                <>
+                                  <p className="text-green-600">{`Mean Density: ${data.meanDensity?.toFixed(1)} people/km²`}</p>
+                                  <p className="text-emerald-600">{`Total Population: ${data.totalPopulation?.toLocaleString()}`}</p>
+                                </>
+                              ) : (
+                                <p className="text-gray-500">No data available</p>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Line
+                      type="linear"
+                      dataKey="meanDensity"
+                      connectNulls={false}
+                      dot={{ r: 3, fill: '#10b981' }}
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      isAnimationActive={true}
+                    />
+                    <ReferenceLine 
+                      x={selectedPopulationYear} 
+                      strokeDasharray="4 4" 
+                      stroke="#ef4444"
+                      strokeWidth={1}
+                      label={{ value: `${selectedPopulationYear}`, position: 'top' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                Population density trends over time. Red line shows selected year. 
+                {timeSeriesLoading && " Data is loading progressively..."}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-8 text-sm text-gray-500 bg-gray-50 p-4 rounded-lg mb-8">
+              {timeSeriesLoading ? "Loading population time series data..." : "No population time series available for this area/date range."}
             </div>
           )}
 

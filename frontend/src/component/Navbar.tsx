@@ -27,12 +27,12 @@ export default function Navbar() {
         </li>
         <li>
           <Link href="/dashboard" className="relative px-4 py-2 rounded-lg hover:bg-white/10 transition-all duration-300 hover:scale-105 transform">
-            <span className="relative z-10 text-lg font-medium hover:text-blue-200 hover:text-xl transition-all duration-300">Dashboard</span>
+            <span className="relative z-10 text-lg font-medium hover:text-blue-200 hover:text-xl transition-all duration-300">Enviroment</span>
           </Link>
         </li>
         <li>
           <Link href="/monitoring" className="relative px-4 py-2 rounded-lg hover:bg-white/10 transition-all duration-300 hover:scale-105 transform">
-            <span className="relative z-10 text-lg font-medium hover:text-emerald-200 hover:text-xl transition-all duration-300">Monitoring</span>
+            <span className="relative z-10 text-lg font-medium hover:text-emerald-200 hover:text-xl transition-all duration-300">Infrastructure</span>
           </Link>
         </li>
         <li>
@@ -42,7 +42,7 @@ export default function Navbar() {
         </li>
         <li>
           <Link href="/features" className="relative px-4 py-2 rounded-lg hover:bg-white/10 transition-all duration-300 hover:scale-105 transform">
-            <span className="relative z-10 text-lg font-medium hover:text-blue-200 hover:text-xl transition-all duration-300">Features</span>
+            <span className="relative z-10 text-lg font-medium hover:text-blue-200 hover:text-xl transition-all duration-300">About</span>
           </Link>
         </li>
       </ul>

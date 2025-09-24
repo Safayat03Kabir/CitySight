@@ -240,6 +240,10 @@ class AirQualityService {
       const airQualityDifference = urbanMeanNO2 && ruralMeanNO2 ? 
         ((urbanMeanNO2 - ruralMeanNO2) / ruralMeanNO2 * 100).toFixed(2) : null;
 
+      // --- Compute yearly time series data for progressive visualization ---
+      console.log('📈 Computing air quality time series data...');
+      const timeSeries = await this.computeYearlyAirQualityTimeSeries(geometry, startDate, endDate);
+
       return {
         success: true,
         imageUrl,
@@ -275,7 +279,8 @@ class AirQualityService {
             5: 'Very Unhealthy (>200 µg/m³)'
           },
           visualizationParams: aqiVis
-        } : null
+        } : null,
+        timeSeries: timeSeries
       };
 
     } catch (error) {
@@ -321,6 +326,116 @@ class AirQualityService {
     };
 
     return cityBounds[cityName] || null;
+  }
+
+  /**
+   * Compute yearly time series for air quality data
+   * @param {Object} geometry - AOI geometry
+   * @param {string} startDate - Start date in YYYY-MM-DD format
+   * @param {string} endDate - End date in YYYY-MM-DD format
+   * @returns {Promise<Array>} - Array of yearly air quality points
+   */
+  async computeYearlyAirQualityTimeSeries(geometry, startDate, endDate) {
+    try {
+      // Determine the year range for time series
+      const endYear = parseInt(endDate.split('-')[0]);
+      const startYear = 2019; // Earliest Sentinel-5P data (started Apr 2018, but full coverage from 2019)
+      
+      console.log(`📈 Computing air quality time series from ${startYear} to ${endYear}`);
+      
+      const timeSeries = [];
+      
+      // Process each year individually
+      for (let year = startYear; year <= endYear; year++) {
+        console.log(`📅 Processing air quality year ${year}...`);
+        
+        try {
+          // Create year-specific date range
+          const yearStart = `${year}-01-01`;
+          const yearEnd = `${year}-12-31`;
+          
+          // Sentinel-5P TROPOMI NO2 data
+          const no2Collection = ee.ImageCollection('COPERNICUS/S5P/OFFL/L3_NO2')
+              .select('NO2_column_number_density')
+              .filterBounds(geometry)
+              .filterDate(yearStart, yearEnd)
+              .filter(ee.Filter.lt('NO2_column_number_density', 0.0001)); // Remove extreme values
+          
+          // Check if there's any data for this year
+          const yearCollectionSize = await new Promise((resolve, reject) => {
+            no2Collection.size().getInfo((size, error) => {
+              if (error) reject(error);
+              else resolve(size);
+            });
+          });
+          
+          if (yearCollectionSize === 0) {
+            // No data available for this year
+            timeSeries.push({
+              year: year,
+              meanNO2: null,
+              sampleCount: 0,
+              hasData: false
+            });
+            console.log(`❌ No air quality data available for year ${year}`);
+            continue;
+          }
+          
+          // Create median composite for this year
+          const yearComposite = no2Collection.median().clip(geometry);
+          
+          // Calculate AOI mean NO2 concentration
+          const yearMeanResult = await new Promise((resolve, reject) => {
+            yearComposite.select('NO2_column_number_density').reduceRegion({
+              reducer: ee.Reducer.mean(),
+              geometry: geometry,
+              scale: 1113.2, // Sentinel-5P native resolution
+              maxPixels: 1e9
+            }).getInfo((result, error) => {
+              if (error) reject(error);
+              else resolve(result.NO2_column_number_density || null);
+            });
+          });
+          
+          if (yearMeanResult !== null && !isNaN(yearMeanResult)) {
+            timeSeries.push({
+              year: year,
+              meanNO2: parseFloat((yearMeanResult * 1e6).toFixed(6)), // Convert to µmol/m²
+              sampleCount: yearCollectionSize,
+              hasData: true
+            });
+            console.log(`✅ Year ${year}: ${(yearMeanResult * 1e6).toFixed(6)} µmol/m² NO2 (${yearCollectionSize} images)`);
+          } else {
+            // Data exists but computation failed (e.g., all masked pixels)
+            timeSeries.push({
+              year: year,
+              meanNO2: null,
+              sampleCount: yearCollectionSize,
+              hasData: false
+            });
+            console.log(`⚠️ Year ${year}: No valid pixels after processing`);
+          }
+          
+        } catch (yearError) {
+          console.warn(`⚠️ Error processing air quality year ${year}:`, yearError.message);
+          // Add null entry for failed year
+          timeSeries.push({
+            year: year,
+            meanNO2: null,
+            sampleCount: 0,
+            hasData: false
+          });
+        }
+      }
+      
+      console.log(`📈 Air quality time series computation complete: ${timeSeries.filter(p => p.hasData).length}/${timeSeries.length} years with data`);
+      return timeSeries;
+      
+    } catch (error) {
+      console.error('❌ Error computing air quality time series:', error);
+      // Return empty array on failure to not break main response
+      return [];
+    }
   }
 
   /**

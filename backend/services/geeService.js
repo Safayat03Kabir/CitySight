@@ -469,6 +469,10 @@ class GEEService {
         ? Math.round(populationStats.population_density_sum)
         : null;
 
+      // --- Compute yearly time series data for progressive visualization ---
+      console.log('📈 Computing population time series data...');
+      const timeSeries = await this.computeYearlyPopulationTimeSeries(geometry, year);
+
       return {
         success: true,
         imageUrl,
@@ -502,7 +506,8 @@ class GEEService {
             5: 'Dense Urban (>5,000 people/km²)'
           },
           visualizationParams: zoneVis
-        }
+        },
+        timeSeries: timeSeries
       };
 
     } catch (error) {
@@ -658,6 +663,132 @@ class GEEService {
       
     } catch (error) {
       console.error('❌ Error computing time series:', error);
+      // Return empty array on failure to not break main response
+      return [];
+    }
+  }
+
+  /**
+   * Compute yearly time series for population density data
+   * @param {Object} geometry - AOI geometry
+   * @param {number} baseYear - Base year for the analysis
+   * @returns {Promise<Array>} - Array of yearly population points
+   */
+  async computeYearlyPopulationTimeSeries(geometry, baseYear = 2020) {
+    try {
+      // Available population data years in GPW v4.11
+      const availableYears = [2000, 2005, 2010, 2015, 2020, 2025];
+      
+      console.log(`📈 Computing population time series for available years: ${availableYears.join(', ')}`);
+      
+      const timeSeries = [];
+      
+      // Process each available year
+      for (const year of availableYears) {
+        console.log(`📅 Processing population year ${year}...`);
+        
+        try {
+          // GPW provides specific year data
+          const startDate = `${year}-01-01`;
+          const endDate = `${year}-12-31`;
+          
+          // NASA SEDAC Gridded Population of World (GPW) v4.11
+          const populationCollection = ee.ImageCollection('CIESIN/GPWv411/GPW_Population_Density');
+          
+          const populationDensity = populationCollection
+            .filterDate(startDate, endDate)
+            .first()
+            .select('population_density')
+            .clip(geometry);
+          
+          // Check if data exists for this year
+          const hasData = await new Promise((resolve, reject) => {
+            populationDensity.getInfo((info, error) => {
+              if (error) {
+                console.warn(`⚠️ Error checking population data for year ${year}:`, error.message);
+                resolve(false);
+              } else {
+                resolve(info !== null);
+              }
+            });
+          });
+          
+          if (!hasData) {
+            // No data available for this year
+            timeSeries.push({
+              year: year,
+              meanDensity: null,
+              totalPopulation: null,
+              hasData: false
+            });
+            console.log(`❌ No population data available for year ${year}`);
+            continue;
+          }
+          
+          // Calculate mean population density and total population
+          const reduceCfg = { 
+            reducer: ee.Reducer.mean().combine(ee.Reducer.sum(), '', true),
+            geometry: geometry,
+            scale: 1000, // GPW ~1km resolution
+            maxPixels: 1e9 
+          };
+          
+          const yearResult = await new Promise((resolve, reject) => {
+            populationDensity.reduceRegion(reduceCfg).getInfo((result, error) => {
+              if (error) reject(error);
+              else resolve(result);
+            });
+          });
+          
+          const meanDensity = yearResult.population_density_mean;
+          const totalPopulation = yearResult.population_density_sum;
+          
+          if (meanDensity !== null && !isNaN(meanDensity)) {
+            // Calculate area to get proper total population estimate
+            const areaResult = await new Promise((resolve, reject) => {
+              geometry.area(1).getInfo((area, error) => {
+                if (error) reject(error);
+                else resolve(area / 1e6); // Convert to km²
+              });
+            });
+            
+            const estimatedTotalPopulation = meanDensity * areaResult;
+            
+            timeSeries.push({
+              year: year,
+              meanDensity: parseFloat(meanDensity.toFixed(2)),
+              totalPopulation: parseFloat(estimatedTotalPopulation.toFixed(0)),
+              hasData: true
+            });
+            console.log(`✅ Year ${year}: ${meanDensity.toFixed(2)} people/km² (Total: ${estimatedTotalPopulation.toFixed(0)})`);
+          } else {
+            // Data exists but computation failed
+            timeSeries.push({
+              year: year,
+              meanDensity: null,
+              totalPopulation: null,
+              hasData: false
+            });
+            console.log(`⚠️ Year ${year}: No valid pixels after processing`);
+          }
+          
+        } catch (yearError) {
+          console.warn(`⚠️ Error processing population year ${year}:`, yearError.message);
+          // Add null entry for failed year
+          timeSeries.push({
+            year: year,
+            meanDensity: null,
+            totalPopulation: null,
+            hasData: false
+          });
+        }
+      }
+      
+      console.log(`📈 Population time series computation complete: ${timeSeries.filter(p => p.hasData).length}/${timeSeries.length} years with data`);
+      return timeSeries;
+      
+    } catch (error) {
+      console.error('❌ Error computing population time series:', error);
       // Return empty array on failure to not break main response
       return [];
     }

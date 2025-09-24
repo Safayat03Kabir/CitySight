@@ -118,7 +118,7 @@ export default function Home() {
           onClick={handleExploreDashboard}
           className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white px-10 py-4 rounded-2xl font-bold text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-2xl shadow-green-500/30 relative overflow-hidden group"
         >
-          <span className="relative z-10">Explore Dashboard</span>
+          <span className="relative z-10">Explore More</span>
           <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
         </button>
         <button 
@@ -130,39 +130,7 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Additional Context Sections */}
-      
-      {/* Statistics Section */}
-      <div className={`mt-20 w-full max-w-6xl transition-all duration-1000 delay-1200 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-        <div className="bg-white/90 backdrop-blur-lg rounded-3xl shadow-2xl p-10 border border-green-200/30 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-green-50/50 to-blue-50/50"></div>
-          <div className="relative z-10">
-            <h2 className="text-4xl font-black text-center mb-12 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">Global Impact</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-              <div className="text-center group hover:scale-110 transition-transform duration-500 p-4">
-                <div className="text-5xl font-black text-green-600 mb-3 animate-pulse">500+</div>
-                <div className="text-gray-700 font-semibold text-lg">Cities Monitored</div>
-                <div className="w-12 h-1 bg-gradient-to-r from-green-500 to-emerald-500 mx-auto mt-2 rounded-full"></div>
-              </div>
-              <div className="text-center group hover:scale-110 transition-transform duration-500 p-4">
-                <div className="text-5xl font-black text-blue-600 mb-3 animate-pulse animation-delay-1000">15TB</div>
-                <div className="text-gray-700 font-semibold text-lg">Daily Data Processed</div>
-                <div className="w-12 h-1 bg-gradient-to-r from-blue-500 to-cyan-500 mx-auto mt-2 rounded-full"></div>
-              </div>
-              <div className="text-center group hover:scale-110 transition-transform duration-500 p-4">
-                <div className="text-5xl font-black text-purple-600 mb-3 animate-pulse animation-delay-2000">99.9%</div>
-                <div className="text-gray-700 font-semibold text-lg">Uptime Reliability</div>
-                <div className="w-12 h-1 bg-gradient-to-r from-purple-500 to-indigo-500 mx-auto mt-2 rounded-full"></div>
-              </div>
-              <div className="text-center group hover:scale-110 transition-transform duration-500 p-4">
-                <div className="text-5xl font-black text-green-600 mb-3 animate-pulse animation-delay-4000">25%</div>
-                <div className="text-gray-700 font-semibold text-lg">Average Emission Reduction</div>
-                <div className="w-12 h-1 bg-gradient-to-r from-green-500 to-emerald-500 mx-auto mt-2 rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Additional Context Sectio */}
 
       {/* NASA Partnership Section */}
       <div className={`mt-16 w-full max-w-6xl transition-all duration-1000 delay-1400 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
