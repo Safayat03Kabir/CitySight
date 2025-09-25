@@ -6,16 +6,22 @@ export class PopulationService {
   /**
    * Get population data for custom bounds
    * @param {Object} bounds - { west, south, east, north }
-   * @param {number} year - Year for population data (2000, 2005, 2010, 2015, 2020, 2025)
+   * @param {number} year - Year for population data (will be mapped to nearest valid year)
    * @returns {Promise<Object>} Population data response
    */
   static async getPopulationData(bounds, year = 2020) {
     try {
       console.log('👥 Fetching population data for bounds:', bounds);
       
+      // Map any year to the nearest valid population year (2025 not available, so max is 2020)
+      const validYears = [2000, 2005, 2010, 2015, 2020]; // Removed 2025 as it's not available yet
+      const mappedYear = this.mapToValidPopulationYear(year, validYears);
+      
+      console.log(`📅 Year ${year} mapped to valid population year: ${mappedYear}`);
+      
       // Format exactly as specified in requirements
       const boundsString = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`;
-      const url = `${API_BASE_URL}/api/population?bounds=${boundsString}&year=${year}`;
+      const url = `${API_BASE_URL}/api/population?bounds=${boundsString}&year=${mappedYear}`;
       
       console.log('📡 Request URL:', url);
       
@@ -28,8 +34,8 @@ export class PopulationService {
         throw new Error(data.error?.message || 'Failed to fetch population data');
       }
       
-      // Validate response structure
-      if (!data.success || !data.data) {
+      // Validate response structure - updated for streamlined API
+      if (!data.success || !data.imageUrl) {
         throw new Error('Invalid response format from server');
       }
       
@@ -41,17 +47,45 @@ export class PopulationService {
   }
 
   /**
+   * Map any year to the nearest valid population year
+   * @param {number} inputYear - Input year from universal selector
+   * @param {number[]} validYears - Array of valid population years
+   * @returns {number} Nearest valid population year
+   */
+  static mapToValidPopulationYear(inputYear, validYears) {
+    // Find the closest valid year
+    let closest = validYears[0];
+    let minDiff = Math.abs(inputYear - closest);
+    
+    for (const validYear of validYears) {
+      const diff = Math.abs(inputYear - validYear);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = validYear;
+      }
+    }
+    
+    return closest;
+  }
+
+  /**
    * Get population data for a predefined city
    * @param {string} cityName - Name of the city
-   * @param {number} year - Year for population data
+   * @param {number} year - Year for population data (will be mapped to nearest valid year)
    * @returns {Promise<Object>} Population data response
    */
   static async getCityPopulationData(cityName, year = 2020) {
     try {
       console.log('🏙️ Fetching population data for city:', cityName);
       
+      // Map any year to the nearest valid population year (2025 not available, so max is 2020)
+      const validYears = [2000, 2005, 2010, 2015, 2020]; // Removed 2025 as it's not available yet
+      const mappedYear = this.mapToValidPopulationYear(year, validYears);
+      
+      console.log(`📅 Year ${year} mapped to valid population year: ${mappedYear}`);
+      
       // Format exactly as specified in requirements
-      const url = `${API_BASE_URL}/api/population/city/${encodeURIComponent(cityName)}?year=${year}`;
+      const url = `${API_BASE_URL}/api/population/city/${encodeURIComponent(cityName)}?year=${mappedYear}`;
       
       console.log('📡 Request URL:', url);
       
@@ -64,8 +98,8 @@ export class PopulationService {
         throw new Error(data.error?.message || 'Failed to fetch city population data');
       }
       
-      // Validate response structure
-      if (!data.success || !data.data) {
+      // Validate response structure - updated for streamlined API
+      if (!data.success || !data.imageUrl) {
         throw new Error('Invalid response format from server');
       }
       

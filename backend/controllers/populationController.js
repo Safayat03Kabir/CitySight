@@ -8,6 +8,14 @@ const geeService = require('../services/geeService');
  */
 exports.getPopulationData = async (req, res) => {
   console.log('👥 Population data request received:', req.query);
+  console.log('🔍 API Access - Population endpoint hit');
+  console.log('📝 Request details:', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
   
   try {
     // Parse query parameters
@@ -87,47 +95,26 @@ exports.getPopulationData = async (req, res) => {
 
     clearTimeout(requestTimeout);
 
-    // Enhance response with additional metadata for frontend
-    const enhancedResponse = {
+    // Enhanced response including comprehensive statistics data
+    const streamlinedResponse = {
       success: true,
-      data: {
-        // Include the essential imageUrl that frontend expects
-        imageUrl: populationData.imageUrl,
-        // Spread other population data properties
-        ...populationData,
-        // Add frontend-specific properties
-        layerType: 'population',
-        opacity: 0.7,
-        attribution: 'NASA Socioeconomic Data and Applications Center (SEDAC)',
-        // Add coordinate bounds for map overlay
-        overlayBounds: {
-          northeast: { lat: north, lng: east },
-          southwest: { lat: south, lng: west }
-        },
-        // Enhanced statistics for visualization
-        displayInfo: {
-          minDensity: populationData.visualizationParams.min,
-          maxDensity: populationData.visualizationParams.max,
-          colorScale: populationData.visualizationParams.palette,
-          legend: {
-            title: 'Population Density (people/km²)',
-            colors: populationData.visualizationParams.palette,
-            labels: ['0', '100', '1,000', '5,000', '10,000+']
-          }
-        }
+      imageUrl: populationData.imageUrl,
+      layerType: 'population',
+      bounds: boundsObj,
+      year: targetYear,
+      overlayBounds: {
+        northeast: { lat: north, lng: east },
+        southwest: { lat: south, lng: west }
       },
-      metadata: {
-        requestId: `population_${Date.now()}`,
-        processingTime: new Date().toISOString(),
-        dataQuality: 'excellent',
-        dataYear: targetYear,
-        cacheExpires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours
-      },
+      visualizationParams: populationData.visualizationParams,
+      statistics: populationData.statistics,
+      metadata: populationData.metadata,
+      attribution: 'NASA Socioeconomic Data and Applications Center (SEDAC)',
       timestamp: new Date().toISOString()
     };
 
     console.log('✅ Population data successfully processed and returned');
-    res.json(enhancedResponse);
+    res.json(streamlinedResponse);
 
   } catch (error) {
     console.error('❌ Population data error:', error);
@@ -228,30 +215,27 @@ exports.getCityPopulationData = async (req, res) => {
     // Get city bounds for response
     const cityBounds = geeService.getCityBounds(cityName);
 
-    const response = {
+    // Enhanced response for city data with statistics
+    const streamlinedResponse = {
       success: true,
+      imageUrl: populationData.imageUrl,
+      layerType: 'population',
       city: cityName,
-      data: {
-        ...populationData,
-        cityBounds,
-        layerType: 'cityPopulation',
-        opacity: 0.7,
-        overlayBounds: {
-          northeast: { lat: cityBounds.north, lng: cityBounds.east },
-          southwest: { lat: cityBounds.south, lng: cityBounds.west }
-        }
+      bounds: cityBounds,
+      year: targetYear,
+      overlayBounds: {
+        northeast: { lat: cityBounds.north, lng: cityBounds.east },
+        southwest: { lat: cityBounds.south, lng: cityBounds.west }
       },
-      metadata: {
-        requestId: `city_population_${Date.now()}`,
-        processingTime: new Date().toISOString(),
-        dataQuality: 'excellent',
-        dataYear: targetYear
-      },
+      visualizationParams: populationData.visualizationParams,
+      statistics: populationData.statistics,
+      metadata: populationData.metadata,
+      attribution: 'NASA Socioeconomic Data and Applications Center (SEDAC)',
       timestamp: new Date().toISOString()
     };
 
     console.log(`✅ City population data for ${cityName} successfully processed`);
-    res.json(response);
+    res.json(streamlinedResponse);
 
   } catch (error) {
     console.error(`❌ City population data error for ${req.params.cityName}:`, error);
@@ -272,65 +256,183 @@ exports.getCityPopulationData = async (req, res) => {
 };
 
 /**
+ * Get multi-year statistics for population analysis
+ * GET /api/population/statistics?bounds=west,south,east,north&years=2000,2005,2010,2015,2020
+ */
+exports.getPopulationStatistics = async (req, res) => {
+  console.log('📊 Population statistics request received:', req.query);
+  console.log('🔍 API Access - Population Statistics endpoint hit');
+  console.log('📝 Request details:', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
+  
+  try {
+    const { bounds, years } = req.query;
+
+    // Validate bounds parameter
+    if (!bounds) {
+      console.log('❌ Population statistics: Missing bounds parameter');
+      return res.status(400).json({
+        error: 'Missing bounds parameter',
+        message: 'Please provide bounds in format: west,south,east,north',
+        example: '/api/population/statistics?bounds=-74.1,40.6,-73.9,40.8&years=2000,2005,2010,2015,2020',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Parse bounds
+    const boundsArray = bounds.split(',').map(coord => parseFloat(coord.trim()));
+    if (boundsArray.length !== 4 || boundsArray.some(isNaN)) {
+      console.log('❌ Population statistics: Invalid bounds format:', bounds);
+      return res.status(400).json({
+        error: 'Invalid bounds format',
+        message: 'Bounds must be four numbers: west,south,east,north',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const [west, south, east, north] = boundsArray;
+    const boundsObj = { west, south, east, north };
+
+    // Parse years or use default (available population data years)
+    const defaultYears = [2000, 2005, 2010, 2015, 2020];
+    let targetYears = years ? 
+      years.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y)) : 
+      defaultYears;
+
+    // Filter to only supported population years
+    const supportedYears = [2000, 2005, 2010, 2015, 2020, 2025];
+    targetYears = targetYears.filter(year => supportedYears.includes(year));
+
+    console.log(`📊 Processing population statistics for ${targetYears.length} years:`, targetYears);
+    console.log('🗺️ Analysis bounds:', boundsObj);
+
+    // Fetch data for each year
+    const yearlyStats = [];
+    for (const year of targetYears) {
+      try {
+        console.log(`👥 Fetching population data for year ${year}...`);
+        
+        const populationData = await geeService.getPopulationData(boundsObj, year);
+        
+        if (populationData.success && populationData.statistics) {
+          const yearStats = {
+            year,
+            totalPopulation: populationData.statistics.totalPopulation,
+            populationDensity: populationData.statistics.populationDensity,
+            gridCells: populationData.statistics.gridCells,
+            maxDensity: populationData.statistics.maxDensity,
+            avgDensity: populationData.statistics.avgDensity,
+            populationRange: populationData.statistics.populationRange,
+            qualityScore: populationData.metadata?.processingInfo?.qualityScore
+          };
+          yearlyStats.push(yearStats);
+          console.log(`✅ Added population data for ${year}:`, yearStats);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch population data for year ${year}:`, error.message);
+      }
+    }
+
+    // Structure data for AI analysis
+    const aiAnalysisData = {
+      dataType: 'population_analysis',
+      region: {
+        bounds: boundsObj,
+        coordinates: `${west},${south} to ${east},${north}`
+      },
+      temporalCoverage: {
+        years: targetYears,
+        totalDataPoints: yearlyStats.length
+      },
+      metrics: yearlyStats.map(stat => ({
+        year: stat.year,
+        population: stat.totalPopulation,
+        density: stat.populationDensity,
+        maxDensity: stat.maxDensity,
+        dataQuality: stat.qualityScore || 'unknown'
+      })),
+      trends: yearlyStats.length > 1 ? {
+        populationGrowth: yearlyStats[yearlyStats.length - 1].totalPopulation - yearlyStats[0].totalPopulation,
+        densityChange: yearlyStats[yearlyStats.length - 1].populationDensity - yearlyStats[0].populationDensity,
+        growthRate: yearlyStats.length > 1 ? 
+          ((yearlyStats[yearlyStats.length - 1].totalPopulation / yearlyStats[0].totalPopulation - 1) * 100).toFixed(2) : null
+      } : null
+    };
+
+    console.log(`✅ Population statistics processing complete. Found data for ${yearlyStats.length} years`);
+
+    res.json({
+      success: true,
+      type: 'population_statistics',
+      bounds: boundsObj,
+      yearlyData: yearlyStats,
+      summary: {
+        totalYears: yearlyStats.length,
+        avgPopulation: yearlyStats.length > 0 ? 
+          Math.round(yearlyStats.reduce((sum, item) => sum + (item.totalPopulation || 0), 0) / yearlyStats.length) : null,
+        avgDensity: yearlyStats.length > 0 ? 
+          (yearlyStats.reduce((sum, item) => sum + (item.populationDensity || 0), 0) / yearlyStats.length).toFixed(2) : null,
+        maxPopulation: yearlyStats.length > 0 ? 
+          Math.max(...yearlyStats.map(item => item.totalPopulation || 0)) : null,
+        avgGridCells: yearlyStats.length > 0 ? 
+          Math.round(yearlyStats.reduce((sum, item) => sum + (item.gridCells || 0), 0) / yearlyStats.length) : null
+      },
+      aiAnalysisData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Population statistics error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch population statistics',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+/**
  * Get available population data info/metadata
  * GET /api/population/info
  */
 exports.getPopulationInfo = (req, res) => {
+  console.log('ℹ️ API Access - Population Info endpoint hit');
   res.json({
     success: true,
     info: {
       title: 'Population Density Analysis API',
-      dataSource: 'NASA Socioeconomic Data and Applications Center (SEDAC) - Gridded Population of the World (GPW)',
-      description: 'Population density estimates for demographic analysis using Google Earth Engine',
+      dataSource: 'NASA SEDAC - Gridded Population of the World (GPW)',
+      description: 'Population density analysis using satellite-derived population data',
       temporalResolution: '5-year intervals',
-      spatialResolution: '30 arc-seconds (~1 km)',
-      units: 'People per square kilometer',
+      spatialResolution: '30 arc-seconds (~1km at equator)',
+      units: 'persons per square kilometer',
       availableYears: [2000, 2005, 2010, 2015, 2020, 2025],
-      defaultYear: 2020,
-      supportedCities: geeService.getSupportedCities(),
+      note: '2025 data may be projected/estimated',
       endpoints: {
         customArea: {
           path: '/api/population',
           method: 'GET',
           parameters: {
             bounds: 'Required - west,south,east,north coordinates',
-            year: 'Optional - Available years: 2000, 2005, 2010, 2015, 2020, 2025 (default: 2020)'
+            year: 'Optional - Available years: 2000,2005,2010,2015,2020,2025 (default: 2020)'
           },
           example: '/api/population?bounds=-74.1,40.6,-73.9,40.8&year=2020'
         },
-        predefinedCity: {
-          path: '/api/population/city/:cityName',
+        statistics: {
+          path: '/api/population/statistics',
           method: 'GET',
           parameters: {
-            cityName: 'Required - One of the supported cities',
-            year: 'Optional - Available years: 2000, 2005, 2010, 2015, 2020, 2025'
+            bounds: 'Required - west,south,east,north coordinates',
+            years: 'Optional - comma-separated years from available years (default: all years)'
           },
-          example: '/api/population/city/New York?year=2020'
-        },
-        info: {
-          path: '/api/population/info',
-          method: 'GET',
-          description: 'Get this information page'
+          example: '/api/population/statistics?bounds=-74.1,40.6,-73.9,40.8&years=2000,2005,2010,2015,2020'
         }
-      },
-      dataProcessing: {
-        algorithm: 'UN-adjusted population estimates',
-        resolution: '~1km grid cells',
-        projection: 'Geographic (WGS84)',
-        processing: 'NASA SEDAC population count to density conversion'
-      },
-      outputFormat: {
-        imageUrl: 'PNG thumbnail URL from Google Earth Engine',
-        bounds: 'Geographic bounding box of the analysis area',
-        statistics: 'Population density statistics and demographic metrics',
-        visualizationParams: 'Color palette and scaling for map display'
-      },
-      limitations: [
-        'Data availability varies by region and year',
-        'Processing time increases with area size',
-        'Population estimates are modeled data, not census counts',
-        'Google Earth Engine quota limits may apply'
-      ]
+      }
     },
     timestamp: new Date().toISOString()
   });

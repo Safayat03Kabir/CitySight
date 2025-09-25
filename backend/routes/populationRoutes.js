@@ -6,6 +6,9 @@ const populationController = require('../controllers/populationController');
 // GET /api/population - Fetch population data for custom bounding box (full analysis)
 router.get('/', populationController.getPopulationData);
 
+// GET /api/population/statistics - Get multi-year population statistics
+router.get('/statistics', populationController.getPopulationStatistics);
+
 // GET /api/population/basic - Fetch basic population data for risk assessment (lightweight)
 router.get('/basic', populationController.getBasicPopulationData);
 
@@ -17,5 +20,7 @@ router.get('/info', populationController.getPopulationInfo);
 
 // GET /api/population/cities - Get list of supported cities
 router.get('/cities', populationController.getSupportedCities);
+
+module.exports = router;
 
 module.exports = router;

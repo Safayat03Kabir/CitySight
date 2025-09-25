@@ -1,18 +1,18 @@
-// Air Quality API Routes
 const express = require('express');
-const router = express.Router();
 const airQualityController = require('../controllers/airQualityController');
 
-// GET /api/airquality - Fetch air quality data for custom bounding box
+const router = express.Router();
+
+// Get air quality data for custom area
 router.get('/', airQualityController.getAirQualityData);
 
-// GET /api/airquality/city/:cityName - Fetch air quality data for predefined city
+// Get air quality data for predefined city
 router.get('/city/:cityName', airQualityController.getCityAirQualityData);
 
-// GET /api/airquality/info - Get metadata about air quality data API
-router.get('/info', airQualityController.getAirQualityInfo);
+// Get air quality multi-year statistics
+router.get('/statistics', airQualityController.getAirQualityStatistics);
 
-// GET /api/airquality/cities - Get list of supported cities
-router.get('/cities', airQualityController.getSupportedCities);
+// Get air quality metadata/info
+router.get('/info', airQualityController.getAirQualityInfo);
 
 module.exports = router;

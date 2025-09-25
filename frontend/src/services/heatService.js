@@ -29,8 +29,8 @@ export class HeatService {
         throw new Error(data.error?.message || 'Failed to fetch heat data');
       }
       
-      // Validate response structure
-      if (!data.success || !data.data) {
+      // Validate response structure - updated for streamlined API
+      if (!data.success || !data.imageUrl) {
         throw new Error('Invalid response format from server');
       }
       
@@ -66,8 +66,8 @@ export class HeatService {
         throw new Error(data.error?.message || 'Failed to fetch city heat data');
       }
       
-      // Validate response structure
-      if (!data.success || !data.data) {
+      // Validate response structure - updated for streamlined API
+      if (!data.success || !data.imageUrl) {
         throw new Error('Invalid response format from server');
       }
       

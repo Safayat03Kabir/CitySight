@@ -98,48 +98,32 @@ exports.getHeatData = async (req, res) => {
 
     clearTimeout(requestTimeout);
 
-    // Enhance response with additional metadata for frontend
-    const enhancedResponse = {
+    // Enhanced response including comprehensive statistics data
+    const streamlinedResponse = {
       success: true,
-      data: {
-        // Include the essential imageUrl that frontend expects
-        imageUrl: heatData.imageUrl,
-        // Spread other heat data properties
-        ...heatData,
-        // Add frontend-specific properties
-        layerType: 'heatIsland',
-        opacity: 0.7,
-        attribution: 'NASA Landsat Collection 2 Level 2, MODIS Land Cover',
-        // Add coordinate bounds for map overlay
-        overlayBounds: {
-          northeast: { lat: north, lng: east },
-          southwest: { lat: south, lng: west }
-        },
-        // Enhanced statistics for visualization
-        displayInfo: {
-          minTemp: heatData.visualizationParams.min,
-          maxTemp: heatData.visualizationParams.max,
-          colorScale: heatData.visualizationParams.palette,
-          legend: {
-            title: 'Land Surface Temperature (°C)',
-            colors: heatData.visualizationParams.palette,
-            labels: ['25°C (Cool)', '30°C', '35°C', '40°C', '45°C (Hot)']
-          }
-        }
+      imageUrl: heatData.imageUrl,
+      layerType: 'heatIsland',
+      bounds: boundsObj,
+      dateRange: { start: defaultStartDate, end: defaultEndDate },
+      overlayBounds: {
+        northeast: { lat: north, lng: east },
+        southwest: { lat: south, lng: west }
       },
+      visualizationParams: heatData.visualizationParams,
+      statistics: heatData.statistics,
       metadata: {
+        dataSource: heatData.dataSource,
+        description: heatData.description,
+        processingInfo: heatData.processingInfo,
         requestId: `heat_${Date.now()}`,
-        processingTime: new Date().toISOString(),
-        dataQuality: heatData.statistics.imageCount > 5 ? 'excellent' : 
-                    heatData.statistics.imageCount > 2 ? 'good' : 'fair',
-        availableImages: heatData.statistics.imageCount,
-        cacheExpires: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours
+        processingTime: `${Date.now() - Date.now()}ms`
       },
+      attribution: 'NASA Landsat Collection 2 Level 2, MODIS Land Cover',
       timestamp: new Date().toISOString()
     };
 
     console.log('✅ Heat data successfully processed and returned');
-    res.json(enhancedResponse);
+    res.json(streamlinedResponse);
 
   } catch (error) {
     console.error('❌ Heat data error:', error);
@@ -247,29 +231,36 @@ exports.getCityHeatData = async (req, res) => {
     // Get city bounds for response
     const cityBounds = geeService.getCityBounds(cityName);
 
-    const response = {
+    // Enhanced response for city data with statistics
+    const streamlinedResponse = {
       success: true,
+      imageUrl: heatData.imageUrl,
+      layerType: 'heatIsland',
       city: cityName,
-      data: {
-        ...heatData,
-        cityBounds,
-        layerType: 'cityHeatIsland',
-        opacity: 0.7,
-        overlayBounds: {
-          northeast: { lat: cityBounds.north, lng: cityBounds.east },
-          southwest: { lat: cityBounds.south, lng: cityBounds.west }
-        }
+      bounds: cityBounds,
+      dateRange: { 
+        start: startDate || '2024-01-01', 
+        end: endDate || '2024-08-01' 
       },
+      overlayBounds: {
+        northeast: { lat: cityBounds.north, lng: cityBounds.east },
+        southwest: { lat: cityBounds.south, lng: cityBounds.west }
+      },
+      visualizationParams: heatData.visualizationParams,
+      statistics: heatData.statistics,
       metadata: {
-        requestId: `city_heat_${Date.now()}`,
-        processingTime: new Date().toISOString(),
-        dataQuality: heatData.statistics.imageCount > 5 ? 'excellent' : 'good'
+        dataSource: heatData.dataSource,
+        description: heatData.description,
+        processingInfo: heatData.processingInfo,
+        requestId: `heat_city_${Date.now()}`,
+        processingTime: `${Date.now() - Date.now()}ms`
       },
+      attribution: 'NASA Landsat Collection 2 Level 2, MODIS Land Cover',
       timestamp: new Date().toISOString()
     };
 
     console.log(`✅ City heat data for ${cityName} successfully processed`);
-    res.json(response);
+    res.json(streamlinedResponse);
 
   } catch (error) {
     console.error(`❌ City heat data error for ${req.params.cityName}:`, error);
@@ -357,6 +348,119 @@ exports.getHeatInfo = (req, res) => {
     },
     timestamp: new Date().toISOString()
   });
+};
+
+/**
+ * Get multi-year statistics for heat analysis
+ * GET /api/heat/statistics?bounds=west,south,east,north&years=2020,2021,2022
+ */
+exports.getHeatStatistics = async (req, res) => {
+  console.log('📊 Heat statistics request received:', req.query);
+  
+  try {
+    const { bounds, years } = req.query;
+
+    // Validate bounds parameter
+    if (!bounds) {
+      return res.status(400).json({
+        error: 'Missing bounds parameter',
+        message: 'Please provide bounds in format: west,south,east,north',
+        example: '/api/heat/statistics?bounds=-74.1,40.6,-73.9,40.8&years=2020,2021,2022',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Parse bounds
+    const boundsArray = bounds.split(',').map(coord => parseFloat(coord.trim()));
+    if (boundsArray.length !== 4 || boundsArray.some(isNaN)) {
+      return res.status(400).json({
+        error: 'Invalid bounds format',
+        message: 'Bounds must be four numbers: west,south,east,north',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const [west, south, east, north] = boundsArray;
+    const boundsObj = { west, south, east, north };
+
+    // Parse years or use default
+    const defaultYears = [2020, 2021, 2022, 2023, 2024];
+    const targetYears = years ? 
+      years.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y)) : 
+      defaultYears;
+
+    console.log(`📊 Fetching heat statistics for ${targetYears.length} years`);
+
+    // Fetch data for each year
+    const yearlyStats = [];
+    for (const year of targetYears) {
+      try {
+        const startDate = `${year}-01-01`;
+        const endDate = `${year}-08-01`;
+        
+        const heatData = await geeService.getHeatIslandData(boundsObj, startDate, endDate);
+        
+        if (heatData.success && heatData.statistics) {
+          yearlyStats.push({
+            year,
+            temperature: heatData.statistics.urbanMeanC,
+            heatIslandIntensity: heatData.statistics.heatIslandIntensity,
+            imageCount: heatData.statistics.imageCount,
+            temperatureRange: heatData.statistics.temperatureRange
+          });
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch heat data for year ${year}:`, error.message);
+      }
+    }
+
+    // Structure data for AI analysis
+    const aiAnalysisData = {
+      dataType: 'urban_heat_island',
+      region: {
+        bounds: boundsObj,
+        coordinates: `${west},${south} to ${east},${north}`
+      },
+      temporalCoverage: {
+        years: targetYears,
+        totalDataPoints: yearlyStats.length
+      },
+      metrics: yearlyStats.map(stat => ({
+        year: stat.year,
+        urbanTemperature: stat.temperature,
+        heatIslandIntensity: stat.heatIslandIntensity,
+        dataQuality: stat.imageCount > 10 ? 'high' : stat.imageCount > 5 ? 'medium' : 'low'
+      })),
+      trends: yearlyStats.length > 1 ? {
+        temperatureTrend: yearlyStats[yearlyStats.length - 1].temperature - yearlyStats[0].temperature,
+        heatIslandTrend: yearlyStats[yearlyStats.length - 1].heatIslandIntensity - yearlyStats[0].heatIslandIntensity
+      } : null
+    };
+
+    res.json({
+      success: true,
+      type: 'heat_statistics',
+      bounds: boundsObj,
+      yearlyData: yearlyStats,
+      summary: {
+        totalYears: yearlyStats.length,
+        avgTemperature: yearlyStats.length > 0 ? 
+          (yearlyStats.reduce((sum, item) => sum + (item.temperature || 0), 0) / yearlyStats.length).toFixed(2) : null,
+        maxHeatIsland: yearlyStats.length > 0 ? 
+          Math.max(...yearlyStats.map(item => item.heatIslandIntensity || 0)).toFixed(2) : null
+      },
+      aiAnalysisData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Heat statistics error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch heat statistics',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 };
 
 /**

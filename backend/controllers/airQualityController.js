@@ -3,82 +3,90 @@
 const airQualityService = require('../services/airQualityService');
 
 /**
- * Get air quality data for a specified bounding box
- * GET /api/airquality?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
+ * Get air quality data for custom area with enhanced logging
+ * GET /api/airquality?bounds=west,south,east,north&startDate=2024-01-01&endDate=2024-08-01
  */
 exports.getAirQualityData = async (req, res) => {
-  console.log('🌬️ Air quality data request received:', req.query);
+  console.log('🌬️ Air quality request received:', req.query);
+  console.log('🔍 API Access - Air Quality endpoint hit');
+  console.log('📝 Request details:', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
   
   try {
-    // Parse query parameters
     const { bounds, startDate, endDate } = req.query;
 
     // Validate bounds parameter
     if (!bounds) {
+      console.log('❌ Air quality: Missing bounds parameter');
       return res.status(400).json({
-        error: 'Missing required parameter',
-        message: 'Bounds parameter is required',
-        example: '/api/airquality?bounds=-74.1,40.6,-73.9,40.8',
-        timestamp: new Date().toISOString()
+        error: 'Missing bounds parameter',
+        message: 'Please provide bounds in format: west,south,east,north',
+        example: '/api/airquality?bounds=-74.1,40.6,-73.9,40.8'
       });
     }
 
-    // Parse bounds string into coordinates
+    // Parse bounds
     const boundsArray = bounds.split(',').map(coord => parseFloat(coord.trim()));
-    
     if (boundsArray.length !== 4 || boundsArray.some(isNaN)) {
+      console.log('❌ Air quality: Invalid bounds format:', bounds);
       return res.status(400).json({
         error: 'Invalid bounds format',
-        message: 'Bounds must be four comma-separated numbers: west,south,east,north',
-        example: 'bounds=-74.1,40.6,-73.9,40.8',
-        received: bounds,
-        timestamp: new Date().toISOString()
+        message: 'Bounds must be four numbers: west,south,east,north'
       });
     }
 
     const [west, south, east, north] = boundsArray;
-
-    // Validate coordinate ranges
-    if (west < -180 || west > 180 || east < -180 || east > 180 || 
-        south < -90 || south > 90 || north < -90 || north > 90) {
-      return res.status(400).json({
-        error: 'Invalid coordinate values',
-        message: 'Coordinates must be within valid ranges: longitude [-180,180], latitude [-90,90]',
-        received: { west, south, east, north },
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    if (west >= east || south >= north) {
-      return res.status(400).json({
-        error: 'Invalid bounding box',
-        message: 'West must be less than East, and South must be less than North',
-        received: { west, south, east, north },
-        timestamp: new Date().toISOString()
-      });
-    }
-
     const boundsObj = { west, south, east, north };
 
-    // Validate date parameters (optional)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (startDate && !dateRegex.test(startDate)) {
-      return res.status(400).json({
-        error: 'Invalid start date format',
-        message: 'Start date must be in YYYY-MM-DD format',
-        received: startDate,
-        example: '2024-01-01',
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Set default dates if not provided
+    const defaultStartDate = startDate || '2024-01-01';
+    const defaultEndDate = endDate || '2024-08-01';
 
-    if (endDate && !dateRegex.test(endDate)) {
+    console.log('🌬️ Processing air quality request for bounds:', boundsObj);
+    console.log('📅 Date range:', defaultStartDate, 'to', defaultEndDate);
+
+    const result = await airQualityService.getAirQualityData(boundsObj, defaultStartDate, defaultEndDate);
+    
+    console.log('✅ Air quality data processing complete:', {
+      success: result.success,
+      imageUrl: result.imageUrl ? 'Generated' : 'Failed',
+      overlayBounds: result.overlayBounds ? 'Present' : 'Missing',
+      statisticsIncluded: !!result.statistics,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Air quality error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch air quality data',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get air quality data for predefined city with enhanced logging
+ * GET /api/airquality/city/:cityName?startDate=2024-01-01&endDate=2024-08-01
+ */
+exports.getCityAirQualityData = async (req, res) => {
+  console.log('🏙️ City air quality request received for:', req.params.cityName, req.query);
+  console.log('🔍 API Access - City Air Quality endpoint hit');
+  
+  try {
+    const { cityName } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (!cityName) {
+      console.log('❌ City air quality: Missing city name');
       return res.status(400).json({
-        error: 'Invalid end date format',
-        message: 'End date must be in YYYY-MM-DD format',
-        received: endDate,
-        example: '2024-08-01',
-        timestamp: new Date().toISOString()
+        error: 'Missing city name',
+        message: 'Please provide a city name in the URL path'
       });
     }
 
@@ -86,247 +94,183 @@ exports.getAirQualityData = async (req, res) => {
     const defaultStartDate = startDate || '2024-01-01';
     const defaultEndDate = endDate || '2024-08-01';
 
-    console.log(`📊 Fetching air quality data for bounds: ${JSON.stringify(boundsObj)}`);
-    console.log(`📅 Date range: ${defaultStartDate} to ${defaultEndDate}`);
+    console.log('🏙️ Processing city air quality for:', cityName);
+    console.log('📅 Date range:', defaultStartDate, 'to', defaultEndDate);
 
-    // Add request timeout handling
-    const requestTimeout = setTimeout(() => {
-      throw new Error('Request timeout - processing took too long');
-    }, 30000); // 30 seconds for air quality processing
-
-    // Fetch air quality data from Google Earth Engine
-    const airQualityData = await airQualityService.getAirQualityData(
-      boundsObj, 
-      defaultStartDate, 
-      defaultEndDate
-    );
-
-    clearTimeout(requestTimeout);
-
-    // Enhance response with additional metadata for frontend
-    const enhancedResponse = {
-      success: true,
-      data: {
-        // Core data from service
-        imageUrl: airQualityData.imageUrl,
-        ...airQualityData,
-        // Frontend-specific enhancements
-        layerType: 'airQuality',
-        opacity: 0.7,
-        attribution: 'ESA Sentinel-5P TROPOMI, MODIS Land Cover',
-        // Map overlay bounds
-        overlayBounds: {
-          northeast: { lat: north, lng: east },
-          southwest: { lat: south, lng: west }
-        },
-        // Display configuration
-        displayInfo: {
-          minConcentration: airQualityData.visualizationParams.min,
-          maxConcentration: airQualityData.visualizationParams.max,
-          colorScale: airQualityData.visualizationParams.palette,
-          legend: {
-            title: 'NO₂ Concentration (mol/m²)',
-            colors: airQualityData.visualizationParams.palette,
-            labels: ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
-          }
-        }
-      },
-      metadata: {
-        requestId: `airquality_${Date.now()}`,
-        processingTime: new Date().toISOString(),
-        dataQuality: airQualityData.statistics.no2ImageCount > 5 ? 'excellent' : 
-                    airQualityData.statistics.no2ImageCount > 2 ? 'good' : 'fair',
-        availableImages: {
-          no2: airQualityData.statistics.no2ImageCount,
-          co: airQualityData.statistics.coImageCount,
-          so2: airQualityData.statistics.so2ImageCount
-        },
-        cacheExpires: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString() // 6 hours cache
-      },
-      timestamp: new Date().toISOString()
-    };
-
-    console.log('✅ Air quality data successfully processed and returned');
-    res.json(enhancedResponse);
-
-  } catch (error) {
-    console.error('❌ Air quality data error:', error);
+    const result = await airQualityService.getCityAirQualityData(cityName, defaultStartDate, defaultEndDate);
     
-    // Determine error type and provide appropriate response
-    let statusCode = 500;
-    let errorMessage = error.message;
-    
-    if (error.message.includes('No data available') || error.message.includes('No satellite data')) {
-      statusCode = 404;
-      errorMessage = 'No air quality data available for the specified area and time period';
-    } else if (error.message.includes('timeout')) {
-      statusCode = 504;
-      errorMessage = 'Request timeout - please try a smaller area or different time period';
-    } else if (error.message.includes('Area too large')) {
-      statusCode = 413;
-      errorMessage = 'Area too large for processing - please try a smaller region';
-    } else if (error.message.includes('quota')) {
-      statusCode = 429;
-      errorMessage = 'Service quota exceeded - please try again later';
-    }
-    
-    res.status(statusCode).json({
-      error: 'Failed to fetch air quality data',
-      message: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      suggestions: [
-        'Try a smaller area or different date range',
-        'Ensure the area has sufficient satellite coverage',
-        'Check if the coordinates are in a valid geographic region',
-        'Use recent dates (2019-2024) for best data availability'
-      ],
-      examples: {
-        validRequest: '/api/airquality?bounds=-74.1,40.6,-73.9,40.8&startDate=2024-01-01&endDate=2024-08-01',
-        cityRequest: '/api/airquality/city/New York'
-      },
+    console.log('✅ City air quality processing complete:', {
+      city: cityName,
+      success: result.success,
+      imageUrl: result.imageUrl ? 'Generated' : 'Failed',
+      overlayBounds: result.overlayBounds ? 'Present' : 'Missing',
       timestamp: new Date().toISOString()
     });
-  }
-};
 
-/**
- * Get air quality data for a predefined city
- * GET /api/airquality/city/:cityName?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
- */
-exports.getCityAirQualityData = async (req, res) => {
-  console.log('🏙️ City air quality data request received:', req.params, req.query);
-  
-  try {
-    const { cityName } = req.params;
-    const { startDate, endDate } = req.query;
-
-    // Validate city parameter
-    if (!cityName) {
-      return res.status(400).json({
-        error: 'Missing city parameter',
-        message: 'City name is required in the URL path',
-        example: '/api/airquality/city/New York',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Check if city is supported
-    const supportedCities = airQualityService.getSupportedCities();
-    if (!supportedCities.includes(cityName)) {
-      return res.status(404).json({
-        error: 'City not supported',
-        message: `City "${cityName}" is not in the supported cities list`,
-        supportedCities: supportedCities,
-        example: '/api/airquality/city/New York',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Validate date parameters if provided
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (startDate && !dateRegex.test(startDate)) {
-      return res.status(400).json({
-        error: 'Invalid start date format',
-        message: 'Start date must be in YYYY-MM-DD format',
-        received: startDate,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    if (endDate && !dateRegex.test(endDate)) {
-      return res.status(400).json({
-        error: 'Invalid end date format',
-        message: 'End date must be in YYYY-MM-DD format',
-        received: endDate,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    console.log(`🌬️ Fetching air quality data for ${cityName}`);
-
-    // Fetch city air quality data
-    const airQualityData = await airQualityService.getCityAirQualityData(
-      cityName,
-      startDate || '2024-01-01',
-      endDate || '2024-08-01'
-    );
-
-    // Get city bounds for response
-    const cityBounds = airQualityService.getCityBounds(cityName);
-    
-    // Enhanced response similar to custom bounds
-    const enhancedResponse = {
-      success: true,
-      data: {
-        ...airQualityData,
-        city: cityName,
-        layerType: 'airQuality',
-        opacity: 0.7,
-        attribution: 'ESA Sentinel-5P TROPOMI, MODIS Land Cover',
-        overlayBounds: {
-          northeast: { lat: cityBounds.north, lng: cityBounds.east },
-          southwest: { lat: cityBounds.south, lng: cityBounds.west }
-        },
-        displayInfo: {
-          minConcentration: airQualityData.visualizationParams.min,
-          maxConcentration: airQualityData.visualizationParams.max,
-          colorScale: airQualityData.visualizationParams.palette,
-          legend: {
-            title: 'NO₂ Concentration (mol/m²)',
-            colors: airQualityData.visualizationParams.palette,
-            labels: ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
-          }
-        }
-      },
-      metadata: {
-        requestId: `airquality_city_${Date.now()}`,
-        city: cityName,
-        processingTime: new Date().toISOString(),
-        dataQuality: airQualityData.statistics.no2ImageCount > 5 ? 'excellent' : 
-                    airQualityData.statistics.no2ImageCount > 2 ? 'good' : 'fair'
-      },
-      timestamp: new Date().toISOString()
-    };
-
-    console.log(`✅ Air quality data for ${cityName} successfully processed and returned`);
-    res.json(enhancedResponse);
-
+    res.json(result);
   } catch (error) {
-    console.error('❌ City air quality data error:', error);
-    
+    console.error('❌ City air quality error:', error);
     res.status(500).json({
       error: 'Failed to fetch city air quality data',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get multi-year statistics for air quality analysis
+ * GET /api/airquality/statistics?bounds=west,south,east,north&years=2020,2021,2022
+ */
+exports.getAirQualityStatistics = async (req, res) => {
+  console.log('📊 Air quality statistics request received:', req.query);
+  console.log('🔍 API Access - Air Quality Statistics endpoint hit');
+  console.log('📝 Request details:', {
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    timestamp: new Date().toISOString()
+  });
+  
+  try {
+    const { bounds, years } = req.query;
+
+    // Validate bounds parameter
+    if (!bounds) {
+      console.log('❌ Air quality statistics: Missing bounds parameter');
+      return res.status(400).json({
+        error: 'Missing bounds parameter',
+        message: 'Please provide bounds in format: west,south,east,north',
+        example: '/api/airquality/statistics?bounds=-74.1,40.6,-73.9,40.8&years=2020,2021,2022',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Parse bounds
+    const boundsArray = bounds.split(',').map(coord => parseFloat(coord.trim()));
+    if (boundsArray.length !== 4 || boundsArray.some(isNaN)) {
+      console.log('❌ Air quality statistics: Invalid bounds format:', bounds);
+      return res.status(400).json({
+        error: 'Invalid bounds format',
+        message: 'Bounds must be four numbers: west,south,east,north',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const [west, south, east, north] = boundsArray;
+    const boundsObj = { west, south, east, north };
+
+    // Parse years or use default
+    const defaultYears = [2020, 2021, 2022, 2023, 2024];
+    const targetYears = years ? 
+      years.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y)) : 
+      defaultYears;
+
+    console.log(`📊 Processing air quality statistics for ${targetYears.length} years:`, targetYears);
+    console.log('🗺️ Analysis bounds:', boundsObj);
+
+    // Fetch data for each year
+    const yearlyStats = [];
+    for (const year of targetYears) {
+      try {
+        console.log(`🌬️ Fetching air quality data for year ${year}...`);
+        const startDate = `${year}-01-01`;
+        const endDate = `${year}-08-01`;
+        
+        const airQualityData = await airQualityService.getAirQualityData(boundsObj, startDate, endDate);
+        
+        if (airQualityData.success && airQualityData.statistics) {
+          const yearStats = {
+            year,
+            urbanMeanNO2: airQualityData.statistics.urbanMeanNO2,
+            ruralMeanNO2: airQualityData.statistics.ruralMeanNO2,
+            airQualityDifference: airQualityData.statistics.airQualityDifference,
+            no2ImageCount: airQualityData.statistics.no2ImageCount,
+            concentrationRange: airQualityData.statistics.concentrationRange,
+            qualityScore: airQualityData.metadata?.processingInfo?.qualityScore
+          };
+          yearlyStats.push(yearStats);
+          console.log(`✅ Added air quality data for ${year}:`, yearStats);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to fetch air quality data for year ${year}:`, error.message);
+      }
+    }
+
+    // Structure data for AI analysis
+    const aiAnalysisData = {
+      dataType: 'air_quality_analysis',
+      region: {
+        bounds: boundsObj,
+        coordinates: `${west},${south} to ${east},${north}`
+      },
+      temporalCoverage: {
+        years: targetYears,
+        totalDataPoints: yearlyStats.length
+      },
+      metrics: yearlyStats.map(stat => ({
+        year: stat.year,
+        urbanPollution: stat.urbanMeanNO2,
+        ruralPollution: stat.ruralMeanNO2,
+        pollutionDifference: stat.airQualityDifference,
+        dataQuality: stat.qualityScore || 'unknown'
+      })),
+      trends: yearlyStats.length > 1 ? {
+        pollutionTrend: yearlyStats[yearlyStats.length - 1].urbanMeanNO2 - yearlyStats[0].urbanMeanNO2,
+        qualityTrend: yearlyStats[yearlyStats.length - 1].airQualityDifference - yearlyStats[0].airQualityDifference
+      } : null
+    };
+
+    console.log(`✅ Air quality statistics processing complete. Found data for ${yearlyStats.length} years`);
+
+    res.json({
+      success: true,
+      type: 'airquality_statistics',
+      bounds: boundsObj,
+      yearlyData: yearlyStats,
+      summary: {
+        totalYears: yearlyStats.length,
+        avgNO2: yearlyStats.length > 0 ? 
+          (yearlyStats.reduce((sum, item) => sum + (item.urbanMeanNO2 || 0), 0) / yearlyStats.length).toFixed(2) : null,
+        maxPollutionDifference: yearlyStats.length > 0 ? 
+          Math.max(...yearlyStats.map(item => item.airQualityDifference || 0)).toFixed(2) : null,
+        avgImageCount: yearlyStats.length > 0 ? 
+          Math.round(yearlyStats.reduce((sum, item) => sum + (item.no2ImageCount || 0), 0) / yearlyStats.length) : null
+      },
+      aiAnalysisData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Air quality statistics error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch air quality statistics',
       message: error.message,
-      city: req.params.cityName,
       timestamp: new Date().toISOString()
     });
   }
 };
 
 /**
- * Get available air quality data info/metadata
+ * Get available air quality info/metadata
  * GET /api/airquality/info
  */
 exports.getAirQualityInfo = (req, res) => {
+  console.log('ℹ️ API Access - Air Quality Info endpoint hit');
   res.json({
     success: true,
     info: {
       title: 'Air Quality Analysis API',
-      dataSource: 'ESA Sentinel-5P TROPOMI + MODIS Land Cover',
-      description: 'Atmospheric composition data for air quality analysis using Google Earth Engine',
-      temporalResolution: 'Daily composite with temporal filtering',
-      spatialResolution: '1113.2 meters (Sentinel-5P)',
-      units: 'mol/m² (column density)',
+      dataSource: 'ESA Copernicus Sentinel-5P TROPOMI',
+      description: 'Nitrogen Dioxide (NO2) air quality data for pollution monitoring',
+      temporalResolution: 'Daily global coverage',
+      spatialResolution: '1113.2 meters',
+      units: 'µg/m³ (approximate NO2 concentration)',
       availableDateRange: {
-        start: '2018-04-30', // Sentinel-5P mission start
-        end: 'Present (with ~3-7 day delay)'
+        start: '2018-04-30', // Sentinel-5P launch
+        end: 'Present (with ~1 week delay)'
       },
       supportedCities: airQualityService.getSupportedCities(),
-      pollutants: {
-        NO2: 'Nitrogen Dioxide - Primary traffic/industrial pollution indicator',
-        CO: 'Carbon Monoxide - Combustion processes indicator',
-        SO2: 'Sulfur Dioxide - Industrial emissions indicator'
-      },
       endpoints: {
         customArea: {
           path: '/api/airquality',
@@ -348,31 +292,16 @@ exports.getAirQualityInfo = (req, res) => {
           },
           example: '/api/airquality/city/New York?startDate=2024-01-01&endDate=2024-08-01'
         },
-        info: {
-          path: '/api/airquality/info',
+        statistics: {
+          path: '/api/airquality/statistics',
           method: 'GET',
-          description: 'Get this information page'
+          parameters: {
+            bounds: 'Required - west,south,east,north coordinates',
+            years: 'Optional - comma-separated years (default: 2020,2021,2022,2023,2024)'
+          },
+          example: '/api/airquality/statistics?bounds=-74.1,40.6,-73.9,40.8&years=2020,2021,2022'
         }
-      },
-      dataProcessing: {
-        qualityFiltering: 'Extreme values filtered out',
-        temporalComposite: 'Median of available observations',
-        spatialAggregation: 'Urban vs rural concentration analysis',
-        atmosphericCorrection: 'Built into Sentinel-5P Level 3 products'
-      },
-      outputFormat: {
-        imageUrl: 'PNG thumbnail URL from Google Earth Engine',
-        bounds: 'Geographic bounding box of the analysis area',
-        statistics: 'Pollution statistics and urban-rural comparison',
-        visualizationParams: 'Color palette and scaling for map display'
-      },
-      limitations: [
-        'Cloud cover may limit data availability in some regions',
-        'Processing time increases with area size',
-        'Sentinel-5P data available from April 2018 onwards',
-        'Google Earth Engine quota limits may apply',
-        'Coarse spatial resolution compared to ground-based measurements'
-      ]
+      }
     },
     timestamp: new Date().toISOString()
   });
