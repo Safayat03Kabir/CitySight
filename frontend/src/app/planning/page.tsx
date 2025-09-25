@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import BuildHomeRiskTool from "../../component/BuildHomeRiskTool";
+import ClimateResilienceAnalyzer from "../../component/ClimateResilienceAnalyzer";
 
 export default function Planning() {
   const [isVisible, setIsVisible] = useState(false);
   const [showRiskTool, setShowRiskTool] = useState(false);
+  const [showClimateAnalyzer, setShowClimateAnalyzer] = useState(false);
 
   useEffect(() => {
     setIsVisible(true);
@@ -22,11 +24,11 @@ export default function Planning() {
     },
     {
       id: "land-use-optimizer",
-      name: "Land Use Optimizer", 
-      description: "AI-powered tool to optimize land allocation based on multiple criteria",
+      name: "Climate Resilience Analyzer", 
+      description: "Assess climate risks, vulnerabilities, and adaptation strategies using real environmental data",
       icon: "🗺️",
       status: "Available",
-      category: "Planning"
+      category: "Climate Resilience"
     },
     {
       id: "climate-simulator",
@@ -76,6 +78,9 @@ export default function Planning() {
       case "build-home-risk":
         setShowRiskTool(true);
         break;
+      case "land-use-optimizer":
+        setShowClimateAnalyzer(true);
+        break;
       default:
         // Handle other tools
         console.log(`Opening tool: ${toolId}`);
@@ -85,6 +90,10 @@ export default function Planning() {
 
   if (showRiskTool) {
     return <BuildHomeRiskTool onClose={() => setShowRiskTool(false)} />;
+  }
+
+  if (showClimateAnalyzer) {
+    return <ClimateResilienceAnalyzer onClose={() => setShowClimateAnalyzer(false)} />;
   }
 
   return (
