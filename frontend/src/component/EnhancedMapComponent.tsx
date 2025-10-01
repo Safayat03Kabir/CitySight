@@ -370,7 +370,7 @@ const EnhancedMapComponent = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRequestBounds, setLastRequestBounds] = useState<MapBounds | null>(null);
-  const [selectedYear, setSelectedYear] = useState<number>(2020);
+  const [selectedYear, setSelectedYear] = useState<number>(2024);
   const [dataType, setDataType] = useState<'heat' | 'airquality' | 'population' | 'energy'>('heat');
 
   // Time series state for progressive loading

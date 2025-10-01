@@ -68,6 +68,18 @@ export default function Home() {
         <div className="absolute bottom-24 right-1/4 w-20 h-10 bg-gradient-to-r from-blue-200/30 to-emerald-200/30 rounded-full opacity-60 animate-sway animation-delay-3000"></div>
       </div>
 
+      {/* Earth Animation GIF */}
+      <div className={`text-center mb-8 relative z-10 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+        <div className="relative mx-auto w-64 h-64 md:w-80 md:h-80 mb-6">
+          <img 
+            src="/earth-animation.gif" 
+            alt="Earth from Space Animation"
+            className="w-full h-full object-cover rounded-full shadow-2xl ring-4 ring-blue-200/50 hover:ring-blue-300/70 transition-all duration-300"
+          />
+          <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/10 to-transparent"></div>
+        </div>
+      </div>
+
       <div className={`text-center mb-12 relative z-10 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
         <div className="w-32 h-1 bg-gradient-to-r from-green-500 to-blue-500 mx-auto mb-6 rounded-full"></div>
         <p className={`text-2xl text-gray-700 mb-6 font-medium transition-all duration-1000 delay-300 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
