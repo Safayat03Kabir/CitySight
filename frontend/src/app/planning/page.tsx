@@ -29,39 +29,8 @@ export default function Planning() {
       icon: "🗺️",
       status: "Available",
       category: "Climate Resilience"
-    },
-    {
-      id: "climate-simulator",
-      name: "Climate Impact Simulator",
-      description: "Simulate future climate scenarios and their urban impacts",
-      icon: "🌡️",
-      status: "Available", 
-      category: "Climate"
-    },
-    {
-      id: "green-infrastructure",
-      name: "Green Infrastructure Planner",
-      description: "Design sustainable infrastructure solutions for urban environments",
-      icon: "🌱",
-      status: "Available",
-      category: "Sustainability"
-    },
-    {
-      id: "population-predictor",
-      name: "Population Growth Predictor",
-      description: "Forecast demographic changes and housing needs using predictive modeling",
-      icon: "👥",
-      status: "Beta",
-      category: "Demographics"
-    },
-    {
-      id: "disaster-preparedness",
-      name: "Disaster Preparedness Tool",
-      description: "Assess and plan for natural disaster risks and emergency response",
-      icon: "🚨",
-      status: "Coming Soon",
-      category: "Emergency"
     }
+    
   ];
 
   const getStatusColor = (status: string) => {
@@ -97,7 +66,7 @@ export default function Planning() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 p-6 relative overflow-hidden">
+    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 p-6 relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Floating tool elements */}

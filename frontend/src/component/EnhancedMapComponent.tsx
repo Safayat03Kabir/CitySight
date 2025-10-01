@@ -112,6 +112,12 @@ interface EnergyStatistics {
   analyzableAreaKm2: number;
   criticalAreaKm2: number;
   criticalAreaPct: number;
+  nearCriticalAreaKm2: number;
+  nearCriticalAreaPct: number;
+  concerningAreaKm2: number;
+  concerningAreaPct: number;
+  normalAreasKm2: number;
+  normalAreasPct: number;
   energyDeprivedPct: number;
   energyDeprivedKm2: number;
   analysisCoverage: number;
@@ -323,6 +329,12 @@ interface EnergyApiResponse {
     analyzableAreaKm2?: number;
     criticalAreaKm2?: number;
     criticalAreaPct?: number;
+    nearCriticalAreaKm2?: number;
+    nearCriticalAreaPct?: number;
+    concerningAreaKm2?: number;
+    concerningAreaPct?: number;
+    normalAreasKm2?: number;
+    normalAreasPct?: number;
     energyDeprivedPct?: number;
     energyDeprivedKm2?: number;
     analysisCoverage?: number;
@@ -1723,6 +1735,12 @@ const EnhancedMapComponent = () => {
                   analyzableAreaKm2: `${energyData.statistics.analyzableAreaKm2?.toFixed(1) || 'N/A'} km²`,
                   criticalAreaKm2: `${energyData.statistics.criticalAreaKm2?.toFixed(1) || 'N/A'} km²`,
                   criticalAreaPct: `${energyData.statistics.criticalAreaPct?.toFixed(1) || 'N/A'}%`,
+                  nearCriticalAreaKm2: `${energyData.statistics.nearCriticalAreaKm2?.toFixed(1) || 'N/A'} km²`,
+                  nearCriticalAreaPct: `${energyData.statistics.nearCriticalAreaPct?.toFixed(1) || 'N/A'}%`,
+                  concerningAreaKm2: `${energyData.statistics.concerningAreaKm2?.toFixed(1) || 'N/A'} km²`,
+                  concerningAreaPct: `${energyData.statistics.concerningAreaPct?.toFixed(1) || 'N/A'}%`,
+                  normalAreasKm2: `${energyData.statistics.normalAreasKm2?.toFixed(1) || 'N/A'} km²`,
+                  normalAreasPct: `${energyData.statistics.normalAreasPct?.toFixed(1) || 'N/A'}%`,
                   energyDeprivedPct: `${energyData.statistics.energyDeprivedPct?.toFixed(1) || 'N/A'}%`,
                   energyDeprivedKm2: `${energyData.statistics.energyDeprivedKm2?.toFixed(1) || 'N/A'} km²`,
                   analysisCoverage: `${energyData.statistics.analysisCoverage?.toFixed(1) || 'N/A'}%`,
@@ -1951,9 +1969,13 @@ const EnhancedMapComponent = () => {
       // Energy Access Analysis
       if (stats.currentStats) {
         const criticalPct = parseFloat(stats.currentStats.criticalAreaPct) || 0;
+        const nearCriticalPct = parseFloat(stats.currentStats.nearCriticalAreaPct) || 0;
+        const concerningPct = parseFloat(stats.currentStats.concerningAreaPct) || 0;
+        const normalPct = parseFloat(stats.currentStats.normalAreasPct) || 0;
         const energyDeprivedPct = parseFloat(stats.currentStats.energyDeprivedPct) || 0;
         const analysisCoverage = parseFloat(stats.currentStats.analysisCoverage) || 0;
         const criticalAreaKm2 = parseFloat(stats.currentStats.criticalAreaKm2) || 0;
+        const concerningAreaKm2 = parseFloat(stats.currentStats.concerningAreaKm2) || 0;
 
         // Analyze energy access levels
         if (criticalPct > 30) {
@@ -1992,6 +2014,42 @@ const EnhancedMapComponent = () => {
           });
           riskLevel = riskLevel === 'low' ? 'moderate' : riskLevel;
           recommendations.push('Continue monitoring energy access and plan targeted improvements');
+        }
+
+        // Concerning areas analysis
+        if (concerningPct > 25) {
+          insights.push({
+            type: 'trend',
+            severity: 'medium',
+            title: 'Significant Concerning Energy Areas',
+            description: `${concerningPct.toFixed(1)}% of areas show concerning energy access patterns requiring attention.`,
+            confidence: 0.8,
+            dataPoints: [`Concerning areas: ${concerningPct.toFixed(1)}%`, `Area: ${concerningAreaKm2.toFixed(1)} km²`]
+          });
+          recommendations.push('Develop proactive energy infrastructure improvement plans for concerning areas');
+        } else if (concerningPct > 15) {
+          insights.push({
+            type: 'trend',
+            severity: 'low',
+            title: 'Moderate Concerning Areas',
+            description: `${concerningPct.toFixed(1)}% of areas show concerning energy patterns worth monitoring.`,
+            confidence: 0.75,
+            dataPoints: [`Concerning areas: ${concerningPct.toFixed(1)}%`]
+          });
+        }
+
+        // Combined risk assessment
+        const totalProblematicAreas = criticalPct + nearCriticalPct + concerningPct;
+        if (totalProblematicAreas > 50) {
+          insights.push({
+            type: 'risk',
+            severity: 'high',
+            title: 'Widespread Energy Access Issues',
+            description: `${totalProblematicAreas.toFixed(1)}% of areas show energy access challenges (${criticalPct.toFixed(1)}% critical, ${nearCriticalPct.toFixed(1)}% near-critical, ${concerningPct.toFixed(1)}% concerning).`,
+            confidence: 0.9,
+            dataPoints: [`Total problematic areas: ${totalProblematicAreas.toFixed(1)}%`, `Normal areas: ${normalPct.toFixed(1)}%`]
+          });
+          riskLevel = 'high';
         }
 
         // Energy deprivation analysis
@@ -3226,6 +3284,20 @@ const EnhancedMapComponent = () => {
                 {energyData.statistics?.criticalAreaPct?.toFixed(1) || 'N/A'}%
               </div>
               <div className="text-xs text-red-500">Limited energy access</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl border-2 border-orange-200 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-sm">🔶</span>
+                </div>
+                <div className="text-xs font-medium text-orange-500 bg-orange-100 px-2 py-1 rounded-full">CONCERNING</div>
+              </div>
+              <div className="text-sm font-medium text-orange-700 mb-2">Concerning Areas</div>
+              <div className="text-3xl font-bold text-orange-600 mb-1">
+                {energyData.statistics?.concerningAreaPct?.toFixed(1) || 'N/A'}%
+              </div>
+              <div className="text-xs text-orange-500">Moderate energy issues</div>
             </div>
             
             <div className="bg-gradient-to-br from-yellow-50 to-amber-100 p-6 rounded-2xl border-2 border-yellow-200 shadow-lg">
