@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -20,6 +20,7 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.1.2"
   },
+  
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.12",
@@ -30,5 +31,8 @@
     "eslint-config-next": "15.5.2",
     "tailwindcss": "^4.1.12",
     "typescript": "5.9.2"
-  }
+  },
+  {
+  "engines": { "node": "20.x" }
+}
 }
