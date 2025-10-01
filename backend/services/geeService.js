@@ -851,11 +851,442 @@ class GEEService {
   }
 
   /**
+   * Get Energy Access Proxy data using built-up + nighttime lights analysis (REFACTORED)
+   * @param {Object} bounds - Bounding box { west, south, east, north }
+   * @param {number} year - Year for analysis (default: 2024)
+   * @returns {Promise<Object>} - Energy access proxy data with PNG overlay
+   */
+  async getEnergyAccessProxy(bounds, year = 2024) {
+    await this.initialize();
+
+    const geometry = ee.Geometry.Rectangle([bounds.west, bounds.south, bounds.east, bounds.north]);
+    const analysisScale = 250; // meters
+
+    // Constants for staged analysis
+    const STAGES = [
+      { name: 'strict',     waterThresh: 50, builtThresh: 0.01, dilate: 0 },
+      { name: 'balanced',   waterThresh: 80, builtThresh: 0.005, dilate: 1 },
+      { name: 'permissive', waterThresh: 90, builtThresh: 0.002, dilate: 2 },
+    ];
+    const MIN_TARGET_COVERAGE = 0.10;  // pick first stage >=10%
+    const SOFT_COVERAGE_SWITCH = 0.03; // use soft weighting below 3%
+
+    console.log(`🔋 Processing Energy Access Proxy for bounds:`, bounds, `Year: ${year}`);
+
+    try {
+      // ---------- DATASETS ----------
+      // VIIRS annual (with fallback year)
+      const viirs = (y) =>
+        ee.ImageCollection('NOAA/VIIRS/DNB/ANNUAL_V22')
+          .filterDate(`${y}-01-01`, `${y + 1}-01-01`)
+          .select('median');
+
+      const viirsMain = viirs(year);
+      const viirsFallback = viirs(year - 1);
+      const viirsUse = ee.ImageCollection(
+        ee.Algorithms.If(viirsMain.size().gt(0), viirsMain,
+          ee.Algorithms.If(viirsFallback.size().gt(0), viirsFallback, viirs(year - 2))
+        )
+      );
+
+      const ntl = viirsUse.mosaic().rename('ntl').clip(geometry);
+
+      // Validate nighttime lights availability
+      const ntlCount = await new Promise((resolve, reject) => {
+        viirsUse.size().getInfo((v, e) => e ? reject(e) : resolve(v));
+      });
+      
+      if (!ntlCount) {
+        throw new Error(`No VIIRS annual lights available for ${year}, ${year-1}, or ${year-2}. Try a different year or region.`);
+      }
+      
+      console.log(`📡 Using VIIRS nighttime lights data (${ntlCount} images available)`);
+
+      // GHSL built surface (area-preserving coarsen to ~250m)
+      const builtSurfaceRaw = ee.Image('JRC/GHSL/P2023A/GHS_BUILT_S/2020').select('built_surface').clip(geometry);
+      const builtSurface250 = builtSurfaceRaw
+        .reduceResolution({ reducer: ee.Reducer.sum(), maxPixels: 1024 });
+
+      // Built volume (optional in index; leave at native, only use scale in reducers)
+      const builtVolume = ee.Image('JRC/GHSL/P2023A/GHS_BUILT_V/2020')
+        .select('built_volume_total')
+        .clip(geometry);
+
+      // JRC water mask
+      const water = ee.Image('JRC/GSW1_4/GlobalSurfaceWater').select('occurrence').clip(geometry);
+      
+      // ESA WorldCover 2021 for built areas
+      const worldCover = ee.Image('ESA/WorldCover/v200/2021').select('Map').clip(geometry);
+      const wcBuilt = worldCover.eq(50); // Built class = 50
+
+      // Pixel area for consistent fractions
+      const pixelArea = ee.Image.pixelArea();
+
+      // Built fraction (0..1), use area-consistent numerator/denominator
+      const builtFrac = builtSurface250.divide(pixelArea).clamp(0, 1).rename('builtFrac');
+
+      // Memoize AOI area once
+      const totalAreaM2 = await new Promise((resolve, reject) => {
+        geometry.area().getInfo((v, e) => e ? reject(e) : resolve(v || 0));
+      });
+      const totalAreaKm2 = totalAreaM2 / 1e6;
+
+      console.log('📊 Datasets loaded, computing staged analysis masks...');
+
+      // ---------- STAGED ANALYSIS MASK ----------
+      let analysisMask, chosenStage = 'permissive_fallback', coverage = 0;
+      
+      for (const stage of STAGES) {
+        const landMask = water.lt(stage.waterThresh);
+        let builtMask = builtFrac.gt(stage.builtThresh);
+        
+        // Add WorldCover built areas with optional dilation
+        if (stage.dilate > 0) {
+          const wcBuiltDilated = wcBuilt.focal_max({ radius: stage.dilate });
+          builtMask = builtMask.or(wcBuiltDilated);
+        } else {
+          builtMask = builtMask.or(wcBuilt);
+        }
+        
+        const candidateMask = landMask.and(builtMask);
+        
+        // Compute coverage for this candidate
+        const candidateCoverage = await new Promise((resolve, reject) => {
+          ee.Image.pixelArea()
+            .updateMask(candidateMask)
+            .reduceRegion({
+              reducer: ee.Reducer.sum(),
+              geometry,
+              scale: analysisScale,
+              maxPixels: 1e13,
+              tileScale: 4
+            })
+            .getInfo((result, error) => {
+              if (error) reject(error);
+              else {
+                const areaM2 = result.area || 0;
+                resolve(areaM2 / Math.max(totalAreaM2, 1));
+              }
+            });
+        });
+        
+        console.log(`📏 Stage ${stage.name}: coverage = ${(candidateCoverage * 100).toFixed(1)}%`);
+        
+        if (candidateCoverage >= MIN_TARGET_COVERAGE) {
+          analysisMask = candidateMask;
+          chosenStage = stage.name;
+          coverage = candidateCoverage;
+          break;
+        }
+        
+        // Always set the last (permissive) as fallback
+        if (stage.name === 'permissive') {
+          analysisMask = candidateMask;
+          coverage = candidateCoverage;
+        }
+      }
+
+      const analyzableAreaKm2 = (coverage * totalAreaKm2);
+      
+      console.log(`📊 Selected stage: ${chosenStage}, coverage: ${(coverage * 100).toFixed(1)}%`);
+      console.log(`📏 Total area: ${totalAreaKm2.toFixed(1)} km² | Analyzable: ${analyzableAreaKm2.toFixed(1)} km²`);
+
+      // ---------- ROBUST RESCALE ----------
+      const robustRescale01 = (img, mask, pLow = 10, pHigh = 90) => {
+        const band = img.bandNames().get(0);
+        const masked = img.updateMask(mask);
+        const stats = masked.reduceRegion({
+          reducer: ee.Reducer.percentile([pLow, pHigh]),
+          geometry, scale: analysisScale, maxPixels: 1e13, tileScale: 4
+        });
+        const lo = ee.Number(stats.get(ee.String(band).cat(`_p${pLow}`)));
+        const hi = ee.Number(stats.get(ee.String(band).cat(`_p${pHigh}`)));
+        const rng = hi.subtract(lo);
+
+        // Fallback to min/max if percentiles collapse
+        const minmax = masked.reduceRegion({
+          reducer: ee.Reducer.minMax(),
+          geometry, scale: analysisScale, maxPixels: 1e13, tileScale: 4
+        });
+        const minV = ee.Number(minmax.get(ee.String(band).cat('_min')));
+        const maxV = ee.Number(minmax.get(ee.String(band).cat('_max')));
+        const safeLo = ee.Number(ee.Algorithms.If(rng.lte(0), minV, lo));
+        const safeRng = ee.Number(ee.Algorithms.If(rng.lte(0), maxV.subtract(minV), rng)).max(1e-6);
+
+        return img.subtract(safeLo).divide(safeRng).clamp(0, 1);
+      };
+
+      // ---------- SOFT-WEIGHTING FALLBACK ----------
+      const softNeeded = coverage < SOFT_COVERAGE_SWITCH;
+      
+      // Compute NTL-based score image (0..1)
+      const ntlLog = ntl.add(1).log().rename('ntlLog');
+      const ntlLogScaled = robustRescale01(ntlLog, analysisMask, 10, 99);
+      
+      let scoreForQuantiles;
+      if (softNeeded) {
+        console.log('⚠️  Using soft-weighting fallback due to low coverage');
+        const landPermissive = water.lt(95);
+        scoreForQuantiles = ntlLogScaled
+          .updateMask(landPermissive)
+          .multiply(builtFrac.multiply(0.8).add(0.2));
+      } else {
+        const lightsLack = ee.Image(1).subtract(ntlLogScaled).rename('lightsLack');
+        const builtSurfaceScaled = robustRescale01(builtSurfaceRaw, analysisMask, 10, 90);
+        const builtVolumeScaled = robustRescale01(builtVolume, analysisMask, 10, 90);
+        const builtIndex = builtSurfaceScaled.multiply(0.6).add(builtVolumeScaled.multiply(0.4)).sqrt().rename('builtIndex');
+        const eap = builtIndex.multiply(lightsLack).rename('EAP').updateMask(analysisMask);
+        scoreForQuantiles = eap.focal_mean({ kernel: ee.Kernel.square({ radius: 1 }), iterations: 1 });
+      }
+
+      console.log('⚡ Computing improved Energy Access Proxy...');
+
+      // ---------- QUANTILES (with fallback) ----------
+      const combinedReducer = ee.Reducer.percentile([10, 30, 50, 70, 90])
+        .combine(ee.Reducer.minMax(), '', true);
+        
+      const quantileStats = await new Promise((resolve, reject) => {
+        scoreForQuantiles.reduceRegion({
+          reducer: combinedReducer,
+          geometry, 
+          scale: analysisScale, 
+          maxPixels: 1e13, 
+          tileScale: 4
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result || {});
+        });
+      });
+
+      const scoreBandName = scoreForQuantiles.bandNames().get(0);
+      const q20 = ee.Number(quantileStats[`${scoreBandName}_p10`] || 0);
+      const q40 = ee.Number(quantileStats[`${scoreBandName}_p30`] || 0);
+      const q60 = ee.Number(quantileStats[`${scoreBandName}_p50`] || 0);
+      const q80 = ee.Number(quantileStats[`${scoreBandName}_p70`] || 0);
+      const eMin = ee.Number(quantileStats[`${scoreBandName}_min`] || 0);
+      const eMax = ee.Number(quantileStats[`${scoreBandName}_max`] || 1);
+      const width = eMax.subtract(eMin).divide(5);
+
+      const degenerate = q80.subtract(q20).lte(1e-6);
+      const finalQ20 = ee.Number(ee.Algorithms.If(degenerate, eMin.add(width), q20));
+      const finalQ40 = ee.Number(ee.Algorithms.If(degenerate, eMin.add(width.multiply(2)), q40));
+      const finalQ60 = ee.Number(ee.Algorithms.If(degenerate, eMin.add(width.multiply(3)), q60));
+      const finalQ80 = ee.Number(ee.Algorithms.If(degenerate, eMin.add(width.multiply(4)), q80));
+
+      // ---------- SEVERITY (0..4) ----------
+      const severity = scoreForQuantiles.expression(
+        '(e <= q20) ? 0 : (e <= q40) ? 1 : (e <= q60) ? 2 : (e <= q80) ? 3 : 4',
+        { e: scoreForQuantiles, q20: finalQ20, q40: finalQ40, q60: finalQ60, q80: finalQ80 }
+      ).rename('severity');
+
+      // ---------- BATCHED AREA REDUCTIONS ----------
+      console.log('📊 Computing all area statistics in single batched call...');
+      
+      // Create boolean bands for all area calculations
+      const km2 = ee.Image.pixelArea().divide(1e6);
+      
+      // Area bands
+      const analyzableBand = analysisMask.multiply(km2).rename('analyzable');
+      const criticalBand = scoreForQuantiles.gte(finalQ80).and(analysisMask).multiply(km2).rename('critical');
+      const nearBand = scoreForQuantiles.gte(finalQ60).and(scoreForQuantiles.lt(finalQ80)).and(analysisMask).multiply(km2).rename('near');
+      
+      // Severity bands (5 classes)
+      const sev0Band = severity.eq(0).and(analysisMask).multiply(km2).rename('sev0');
+      const sev1Band = severity.eq(1).and(analysisMask).multiply(km2).rename('sev1');
+      const sev2Band = severity.eq(2).and(analysisMask).multiply(km2).rename('sev2');
+      const sev3Band = severity.eq(3).and(analysisMask).multiply(km2).rename('sev3');
+      const sev4Band = severity.eq(4).and(analysisMask).multiply(km2).rename('sev4');
+      
+      // Deprived areas (absolute classification for cross-city comparison)
+      const deprivedBand = scoreForQuantiles.gt(0.6)
+        .and(ntlLogScaled.lt(0.3))
+        .and(builtFrac.gt(0.01)) // Use builtFrac instead of builtIndex for soft path compatibility
+        .and(analysisMask)
+        .multiply(km2)
+        .rename('deprived');
+      
+      // Combine all bands for single reduction
+      const areaBands = ee.Image.cat([
+        analyzableBand, criticalBand, nearBand,
+        sev0Band, sev1Band, sev2Band, sev3Band, sev4Band,
+        deprivedBand
+      ]);
+      
+      // Single batched area computation
+      const areaResults = await new Promise((resolve, reject) => {
+        areaBands.reduceRegion({
+          reducer: ee.Reducer.sum().forEach(areaBands.bandNames()),
+          geometry,
+          scale: analysisScale,
+          maxPixels: 1e13,
+          tileScale: 4
+        }).getInfo((result, error) => {
+          if (error) reject(error);
+          else resolve(result || {});
+        });
+      });
+      
+      // Extract area results
+      const actualAnalyzableKm2 = areaResults.analyzable || 0;
+      const criticalKm2 = areaResults.critical || 0;
+      const nearKm2 = areaResults.near || 0;
+      const normalKm2 = Math.max(0, actualAnalyzableKm2 - criticalKm2 - nearKm2);
+      
+      const sevAreasKm2 = {
+        0: areaResults.sev0 || 0,
+        1: areaResults.sev1 || 0,
+        2: areaResults.sev2 || 0,
+        3: areaResults.sev3 || 0,
+        4: areaResults.sev4 || 0
+      };
+      
+      const deprivedKm2 = areaResults.deprived || 0;
+      
+      // Compute percentages
+      const pct = (partKm2) => actualAnalyzableKm2 > 0 ? +(100 * partKm2 / actualAnalyzableKm2).toFixed(1) : 0;
+      
+      const sevPercents = {};
+      for (let i = 0; i < 5; i++) {
+        sevPercents[i] = pct(sevAreasKm2[i]);
+      }
+      
+      const deprivedPct = pct(deprivedKm2);
+
+      console.log(` Critical areas: ${criticalKm2.toFixed(1)} km² (${pct(criticalKm2)}%)`);
+      console.log(`🟠 Near-critical areas: ${nearKm2.toFixed(1)} km² (${pct(nearKm2)}%)`);
+      console.log(`🟢 Normal areas: ${normalKm2.toFixed(1)} km² (${pct(normalKm2)}%)`);
+      console.log(`🏗️ Energy-deprived built areas: ${deprivedPct}% (${deprivedKm2.toFixed(1)} km²)`);
+
+      // ---------- VIZ (continuous) ----------
+      const eapForViz = scoreForQuantiles.unmask(0); // fill masked pixels with low value (green end)
+      const eapVis = { min: 0, max: 1, palette: ['#1a9850', '#66bd63', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027'] };
+      const visImage = eapForViz.visualize(eapVis);
+
+      console.log('🖼️ Generating visualization...');
+      const imageUrl = await new Promise((resolve, reject) => {
+        visImage.getThumbURL(
+          { region: geometry, dimensions: 1024, format: 'png' },
+          (url, error) => (error ? reject(error) : resolve(url))
+        );
+      });
+
+      console.log('✅ Energy Access Proxy analysis complete');
+
+      // ---------- RETURN ----------
+      return {
+        success: true,
+        layerType: 'energy',
+        imageUrl,
+        overlayBounds: {
+          southwest: { lat: bounds.south, lng: bounds.west },
+          northeast: { lat: bounds.north, lng: bounds.east }
+        },
+        attribution: 'VIIRS V22 (NOAA), GHSL 2023A (JRC), JRC GSW 1.4',
+        timestamp: new Date().toISOString(),
+        statistics: {
+          totalAreaKm2: +totalAreaKm2.toFixed(1),           // AOI size
+          analyzableAreaKm2: +actualAnalyzableKm2.toFixed(1), // built ∧ land (what percentages use)
+          criticalAreaKm2: +criticalKm2.toFixed(1),
+          criticalAreaPct: pct(criticalKm2),
+          nearCriticalAreaKm2: +nearKm2.toFixed(1),
+          nearCriticalAreaPct: pct(nearKm2),
+          normalAreasKm2: +normalKm2.toFixed(1),
+          normalAreasPct: +(100 - pct(criticalKm2) - pct(nearKm2)).toFixed(1),
+          // Cross-city comparison metric
+          energyDeprivedPct: +deprivedPct.toFixed(2),
+          energyDeprivedKm2: +deprivedKm2.toFixed(2),
+          // Coverage and data quality
+          analysisCoverage: +((coverage * 100).toFixed(1)),
+          dataYear: year,
+          // Additional legacy fields for compatibility
+          totalCriticalAndNearKm2: +(criticalKm2 + nearKm2).toFixed(1),
+          totalCriticalAndNearPct: +(pct(criticalKm2) + pct(nearKm2)).toFixed(1),
+
+          // 5-class severity (area-based)
+          areaBreakdown: {
+            excellent: { km2: +sevAreasKm2[0].toFixed(1), percentage: sevPercents[0] },
+            good:      { km2: +sevAreasKm2[1].toFixed(1), percentage: sevPercents[1] },
+            moderate:  { km2: +sevAreasKm2[2].toFixed(1), percentage: sevPercents[2] },
+            concerning:{ km2: +sevAreasKm2[3].toFixed(1), percentage: sevPercents[3] },
+            critical:  { km2: +sevAreasKm2[4].toFixed(1), percentage: sevPercents[4] }
+          }
+        },
+        diagnostics: {
+          chosenStage: chosenStage,
+          coverage: +coverage.toFixed(3),
+          analyzableKm2: +actualAnalyzableKm2.toFixed(1),
+          totalKm2: +totalAreaKm2.toFixed(1),
+          usedSoftWeighting: softNeeded,
+          status: coverage < SOFT_COVERAGE_SWITCH ? 'LOW_COVERAGE' : 'NORMAL'
+        },
+        metadata: {
+          dataSource: 'VIIRS+GHSL+GSW',
+          resolution: `${analysisScale}m`,
+          yearPeriod: `${year}`,
+          algorithm: 'EAP = sqrt(0.6*BuiltSurfaceScaled + 0.4*BuiltVolumeScaled) * (1 - NTL_log_scaled)',
+          method: 'Quantile classification with robust rescaling; area-based stats',
+          notes: 'Viz unmasked to fill non-analyzed pixels with neutral color (green end)',
+          qualityMetrics: {
+            coveragePercent: +((coverage * 100).toFixed(1)),
+            ntlImagesUsed: ntlCount,
+            degeneratePercentiles: false
+          }
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Error in Energy Access Proxy analysis:', error);
+      
+      if (error.message.includes('User memory limit exceeded')) {
+        throw new Error('Area too large for processing. Please try a smaller region.');
+      } else if (error.message.includes('Computation timed out')) {
+        throw new Error('Processing timed out. Please try a smaller area.');
+      } else {
+        throw new Error(`Failed to process energy access data: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Get energy access data for predefined city bounds
+   * @param {string} cityName - Name of the city
+   * @param {number} year - Year for analysis (default: 2024)
+   * @returns {Promise<Object>} - Energy access data for the city
+   */
+  async getCityEnergyData(cityName, year = 2024) {
+    const cityBounds = this.getCityBounds(cityName);
+    if (!cityBounds) {
+      throw new Error(`City "${cityName}" not found or not supported`);
+    }
+
+    return await this.getEnergyAccessProxy(cityBounds, year);
+  }
+
+  /**
+   * Get predefined city bounds for major cities
+   * @param {string} cityName - Name of the city
+   * @returns {Object|null} - City bounds or null if not found
+   */
+  getCityBounds(cityName) {
+    const cityBounds = {
+      'New York': { west: -74.25, south: 40.47, east: -73.70, north: 40.92 },
+      'Los Angeles': { west: -118.67, south: 33.70, east: -118.16, north: 34.34 },
+      'Chicago': { west: -87.94, south: 41.64, east: -87.52, north: 42.02 },
+      'Houston': { west: -95.82, south: 29.52, east: -95.07, north: 30.11 },
+      'Phoenix': { west: -112.32, south: 33.27, east: -111.93, north: 33.69 },
+      'Philadelphia': { west: -75.28, south: 39.86, east: -74.96, north: 40.14 },
+      'Singapore': { west: 103.75, south: 1.28, east: 103.92, north: 1.42 }
+    };
+    
+    return cityBounds[cityName] || null;
+  }
+
+  /**
    * Get supported cities list
    * @returns {Array} - List of supported city names
    */
   getSupportedCities() {
-    return ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia'];
+    return ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'Singapore'];
   }
 }
 

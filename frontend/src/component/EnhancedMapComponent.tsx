@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { HeatService } from '../services/heatService';
 import { AirQualityService } from '../services/airQualityService';
 import { PopulationService } from '../services/populationService';
+import { EnergyService } from '../services/energyService';
 import {
   ResponsiveContainer,
   LineChart,
@@ -39,6 +40,14 @@ interface PopulationYearPoint {
   year: number;
   meanDensity: number | null;
   totalPopulation: number | null;
+  hasData: boolean;
+}
+
+// Type definitions for energy access time series
+interface EnergyYearPoint {
+  year: number;
+  criticalAreaKm2: number | null;
+  energyDeprivedPct: number | null;
   hasData: boolean;
 }
 
@@ -97,6 +106,18 @@ interface PopulationStatistics {
   densityRange: { min: number; max: number };
 }
 
+// Type definitions for energy data response
+interface EnergyStatistics {
+  totalAreaKm2: number;
+  analyzableAreaKm2: number;
+  criticalAreaKm2: number;
+  criticalAreaPct: number;
+  energyDeprivedPct: number;
+  energyDeprivedKm2: number;
+  analysisCoverage: number;
+  dataYear: number;
+}
+
 interface VisualizationParams {
   min: number;
   max: number;
@@ -143,6 +164,16 @@ interface PopulationDataResponse {
   overlayBounds: OverlayBounds;
   year: number;
   timeSeries?: PopulationYearPoint[];
+}
+
+interface EnergyDataResponse {
+  imageUrl: string;
+  bounds: { west: number; south: number; east: number; north: number };
+  statistics: EnergyStatistics;
+  visualizationParams: VisualizationParams;
+  overlayBounds: OverlayBounds;
+  year: number;
+  timeSeries?: EnergyYearPoint[];
 }
 
 interface HeatMetadata {
@@ -274,6 +305,39 @@ interface PopulationApiResponse {
   };
 }
 
+interface EnergyApiResponse {
+  success: boolean;
+  imageUrl: string;
+  layerType: string;
+  bounds?: MapBounds;
+  year?: number;
+  overlayBounds: {
+    northeast: { lat: number; lng: number };
+    southwest: { lat: number; lng: number };
+  };
+  visualizationParams?: any;
+  attribution: string;
+  timestamp: string;
+  statistics?: {
+    totalAreaKm2?: number;
+    analyzableAreaKm2?: number;
+    criticalAreaKm2?: number;
+    criticalAreaPct?: number;
+    energyDeprivedPct?: number;
+    energyDeprivedKm2?: number;
+    analysisCoverage?: number;
+    dataYear?: number;
+    areaBreakdown?: any;
+  };
+  metadata?: {
+    dataSource?: string;
+    algorithm?: string;
+    resolution?: string;
+    method?: string;
+    qualityMetrics?: any;
+  };
+}
+
 interface MapBounds {
   west: number;
   south: number;
@@ -286,20 +350,23 @@ const EnhancedMapComponent = () => {
   const [heatOverlay, setHeatOverlay] = useState<any>(null);
   const [airQualityOverlay, setAirQualityOverlay] = useState<any>(null);
   const [populationOverlay, setPopulationOverlay] = useState<any>(null);
+  const [energyOverlay, setEnergyOverlay] = useState<any>(null);
   const [heatData, setHeatData] = useState<HeatApiResponse | null>(null);
   const [airQualityData, setAirQualityData] = useState<AirQualityApiResponse | null>(null);
   const [populationData, setPopulationData] = useState<PopulationApiResponse | null>(null);
+  const [energyData, setEnergyData] = useState<EnergyApiResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRequestBounds, setLastRequestBounds] = useState<MapBounds | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(2020);
-  const [dataType, setDataType] = useState<'heat' | 'airquality' | 'population'>('heat');
+  const [dataType, setDataType] = useState<'heat' | 'airquality' | 'population' | 'energy'>('heat');
 
   // Time series state for progressive loading
   const [timeSeriesLoading, setTimeSeriesLoading] = useState<boolean>(false);
   const [heatTimeSeries, setHeatTimeSeries] = useState<HeatYearPoint[]>([]);
   const [airQualityTimeSeries, setAirQualityTimeSeries] = useState<AirQualityYearPoint[]>([]);
   const [populationTimeSeries, setPopulationTimeSeries] = useState<PopulationYearPoint[]>([]);
+  const [energyTimeSeries, setEnergyTimeSeries] = useState<EnergyYearPoint[]>([]);
 
   // Search functionality state
   const [searchLoading, setSearchLoading] = useState<boolean>(false);
@@ -316,6 +383,7 @@ const EnhancedMapComponent = () => {
     heat?: any;
     airquality?: any; 
     population?: any;
+    energy?: any;
   }>({});
 
   // AI Analysis state
@@ -894,6 +962,109 @@ const EnhancedMapComponent = () => {
   };
 
   /**
+   * Fetch energy data for current map bounds
+   */
+  const fetchEnergyDataForCurrentBounds = async () => {
+    if (!map) {
+      setError('Map not initialized');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const bounds = map.getBounds();
+      const mapBounds: MapBounds = {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth()
+      };
+
+      console.log('🔋 Fetching energy data for current bounds:', mapBounds);
+      setLastRequestBounds(mapBounds);
+
+      // Use default year (2024) for energy analysis as specified in requirements
+      const response = await EnergyService.getEnergyData(mapBounds, 2024) as EnergyApiResponse;
+
+      console.log('📥 Energy data received:', response);
+
+      if (response.success && response.imageUrl) {
+        setEnergyData(response);
+        await addEnergyOverlayToMap(response);
+        
+        console.log('✅ Energy layer loaded successfully');
+      } else {
+        throw new Error('Invalid response format');
+      }
+
+    } catch (err) {
+      console.error('❌ Error fetching energy data:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Fetch energy data for a specific city
+   */
+  const fetchCityEnergyData = async (cityName: string) => {
+    setLoading(true);
+    setError(null);
+
+    // Always navigate to the city first
+    navigateToCity(cityName);
+
+    try {
+      console.log('🏙️ Fetching energy data for city:', cityName);
+
+      let response: EnergyApiResponse;
+
+      // For Dhaka and Chittagong, use bounds-based API call
+      if (cityBounds[cityName]) {
+        console.log(`🌐 Using bounds-based API call for ${cityName}`);
+        const bounds = cityBounds[cityName];
+        response = await EnergyService.getEnergyData(bounds, 2024) as EnergyApiResponse;
+      } else {
+        // For other cities, use city name API call
+        response = await EnergyService.getCityEnergyData(cityName, 2024) as EnergyApiResponse;
+      }
+
+      console.log('📥 City energy data received:', response);
+
+      if (response.success && response.imageUrl) {
+        setEnergyData(response);
+        await addEnergyOverlayToMap(response);
+        
+        // Zoom to city bounds if overlayBounds are provided with smooth animation
+        if (map && response.overlayBounds) {
+          const bounds = [
+            [response.overlayBounds.southwest.lat, response.overlayBounds.southwest.lng],
+            [response.overlayBounds.northeast.lat, response.overlayBounds.northeast.lng]
+          ];
+          map.fitBounds(bounds, {
+            animate: true,
+            duration: 2 // 2 second animation
+          });
+          console.log('🔍 Zoomed to city bounds with smooth transition');
+        }
+
+        console.log('✅ City energy layer loaded successfully');
+      } else {
+        throw new Error('Invalid response format');
+      }
+
+    } catch (err) {
+      console.error('❌ Error fetching city energy data:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
    * Add heat overlay to the map using the exact response format
    */
   const addHeatOverlayToMap = async (data: HeatApiResponse) => {
@@ -1058,6 +1229,69 @@ const EnhancedMapComponent = () => {
   };
 
   /**
+   * Add energy overlay to the map using the exact response format
+   */
+  const addEnergyOverlayToMap = async (data: EnergyApiResponse) => {
+    if (!map) {
+      console.error('❌ Map not available for overlay');
+      return;
+    }
+
+    try {
+      const L = (await import('leaflet')).default;
+
+      // Remove existing overlays
+      if (energyOverlay) {
+        map.removeLayer(energyOverlay);
+        console.log('🗑️ Removed previous energy overlay');
+      }
+      if (heatOverlay) {
+        map.removeLayer(heatOverlay);
+        setHeatOverlay(null);
+        console.log('🗑️ Removed heat overlay');
+      }
+      if (airQualityOverlay) {
+        map.removeLayer(airQualityOverlay);
+        setAirQualityOverlay(null);
+        console.log('🗑️ Removed air quality overlay');
+      }
+      if (populationOverlay) {
+        map.removeLayer(populationOverlay);
+        setPopulationOverlay(null);
+        console.log('🗑️ Removed population overlay');
+      }
+
+      // Validate required data
+      if (!data.imageUrl || !data.overlayBounds) {
+        throw new Error('Missing imageUrl or overlayBounds in response');
+      }
+
+      // Add new energy overlay using exact response format
+      const overlay = L.imageOverlay(
+        data.imageUrl,
+        [
+          [data.overlayBounds.southwest.lat, data.overlayBounds.southwest.lng],
+          [data.overlayBounds.northeast.lat, data.overlayBounds.northeast.lng]
+        ],
+        {
+          opacity: 0.7,
+          alt: 'Energy Access Analysis Map'
+        }
+      ).addTo(map);
+
+      setEnergyOverlay(overlay);
+      setDataType('energy');
+
+      console.log('✅ Energy overlay added to map');
+      console.log('🔋 Energy data loaded for layer type:', data.layerType);
+      
+    } catch (error) {
+      console.error('❌ Error adding energy overlay:', error);
+      setError('Failed to add energy overlay to map');
+    }
+  };
+
+  /**
    * Remove heat overlay from map
    */
   const removeHeatOverlay = () => {
@@ -1094,12 +1328,25 @@ const EnhancedMapComponent = () => {
   };
 
   /**
+   * Remove energy overlay from map
+   */
+  const removeEnergyOverlay = () => {
+    if (energyOverlay && map) {
+      map.removeLayer(energyOverlay);
+      setEnergyOverlay(null);
+      setEnergyData(null);
+      console.log('🗑️ Energy overlay removed');
+    }
+  };
+
+  /**
    * Remove all overlays from map
    */
   const removeAllOverlays = () => {
     removeHeatOverlay();
     removeAirQualityOverlay();
     removePopulationOverlay();
+    removeEnergyOverlay();
     setDataType('heat'); // Reset to default
   };
 
@@ -1121,6 +1368,9 @@ const EnhancedMapComponent = () => {
         break;
       case 'population':
         await fetchPopulationDataForCurrentBounds();
+        break;
+      case 'energy':
+        await fetchEnergyDataForCurrentBounds();
         break;
       default:
         setError('Invalid data type selected');
@@ -1146,6 +1396,9 @@ const EnhancedMapComponent = () => {
       case 'population':
         await fetchCityPopulationData(cityName);
         break;
+      case 'energy':
+        await fetchCityEnergyData(cityName);
+        break;
       default:
         setError('Invalid data type selected');
     }
@@ -1154,7 +1407,7 @@ const EnhancedMapComponent = () => {
   /**
    * Fetch time series data progressively starting from selected year
    */
-  const fetchTimeSeriesData = async (bounds: MapBounds, currentDataType: 'heat' | 'airquality' | 'population') => {
+  const fetchTimeSeriesData = async (bounds: MapBounds, currentDataType: 'heat' | 'airquality' | 'population' | 'energy') => {
     if (timeSeriesLoading) return;
 
     setTimeSeriesLoading(true);
@@ -1174,6 +1427,9 @@ const EnhancedMapComponent = () => {
           break;
         case 'population':
           setPopulationTimeSeries([]);
+          break;
+        case 'energy':
+          setEnergyTimeSeries([]);
           break;
       }
 
@@ -1252,6 +1508,12 @@ const EnhancedMapComponent = () => {
               case 'population':
                 setPopulationTimeSeries(prev => {
                   const updated = [...prev, yearData as PopulationYearPoint].sort((a, b) => a.year - b.year);
+                  return updated;
+                });
+                break;
+              case 'energy':
+                setEnergyTimeSeries(prev => {
+                  const updated = [...prev, yearData as EnergyYearPoint].sort((a, b) => a.year - b.year);
                   return updated;
                 });
                 break;
@@ -1444,6 +1706,39 @@ const EnhancedMapComponent = () => {
             }
           } catch (error) {
             console.error(`❌ Failed to fetch population statistics:`, error);
+            statsData = { yearlyData: [], currentStats: null, summary: null };
+          }
+          break;
+
+        case 'energy':
+          // Use current energy data for statistics (simplified approach)
+          try {
+            console.log(`📊 Processing energy statistics from current data...`);
+            
+            if (energyData?.statistics) {
+              statsData = {
+                yearlyData: [], // Energy analysis doesn't use yearly data - single year analysis
+                currentStats: {
+                  totalAreaKm2: `${energyData.statistics.totalAreaKm2?.toFixed(1) || 'N/A'} km²`,
+                  analyzableAreaKm2: `${energyData.statistics.analyzableAreaKm2?.toFixed(1) || 'N/A'} km²`,
+                  criticalAreaKm2: `${energyData.statistics.criticalAreaKm2?.toFixed(1) || 'N/A'} km²`,
+                  criticalAreaPct: `${energyData.statistics.criticalAreaPct?.toFixed(1) || 'N/A'}%`,
+                  energyDeprivedPct: `${energyData.statistics.energyDeprivedPct?.toFixed(1) || 'N/A'}%`,
+                  energyDeprivedKm2: `${energyData.statistics.energyDeprivedKm2?.toFixed(1) || 'N/A'} km²`,
+                  analysisCoverage: `${energyData.statistics.analysisCoverage?.toFixed(1) || 'N/A'}%`,
+                  dataYear: energyData.statistics.dataYear || 2024,
+                  dataSource: energyData.metadata?.dataSource || 'VIIRS+GHSL+GSW',
+                  algorithm: energyData.metadata?.algorithm || 'Energy Access Proxy'
+                },
+                summary: `Energy access analysis reveals ${energyData.statistics.criticalAreaPct?.toFixed(1) || 'N/A'}% critical areas with limited energy access across ${energyData.statistics.analyzableAreaKm2?.toFixed(1) || 'N/A'} km² of analyzable urban area.`
+              };
+              console.log(`✅ Energy statistics processed successfully`);
+            } else {
+              console.warn(`⚠️ No energy data available for statistics`);
+              statsData = { yearlyData: [], currentStats: null, summary: 'No energy data loaded. Please load energy analysis first.' };
+            }
+          } catch (error) {
+            console.error(`❌ Failed to process energy statistics:`, error);
             statsData = { yearlyData: [], currentStats: null, summary: null };
           }
           break;
@@ -1652,6 +1947,95 @@ const EnhancedMapComponent = () => {
 
         summary = `Population analysis shows ${urbanDensity > 10000 ? 'high' : urbanDensity > 5000 ? 'moderate' : 'low'} urban density at ${urbanDensity.toFixed(0)} people/km².`;
       }
+    } else if (dataType === 'energy') {
+      // Energy Access Analysis
+      if (stats.currentStats) {
+        const criticalPct = parseFloat(stats.currentStats.criticalAreaPct) || 0;
+        const energyDeprivedPct = parseFloat(stats.currentStats.energyDeprivedPct) || 0;
+        const analysisCoverage = parseFloat(stats.currentStats.analysisCoverage) || 0;
+        const criticalAreaKm2 = parseFloat(stats.currentStats.criticalAreaKm2) || 0;
+
+        // Analyze energy access levels
+        if (criticalPct > 30) {
+          insights.push({
+            type: 'risk',
+            severity: 'critical',
+            title: 'Severe Energy Access Deficit',
+            description: `${criticalPct.toFixed(1)}% of analyzed areas show critical energy access limitations, indicating widespread energy poverty.`,
+            confidence: 0.9,
+            dataPoints: [`Critical areas: ${criticalPct.toFixed(1)}%`, `Affected area: ${criticalAreaKm2.toFixed(1)} km²`]
+          });
+          riskLevel = 'extreme';
+          recommendations.push('Urgent energy infrastructure development needed in critical areas');
+          recommendations.push('Implement targeted electrification programs and renewable energy solutions');
+          recommendations.push('Prioritize grid extension and off-grid energy systems deployment');
+        } else if (criticalPct > 15) {
+          insights.push({
+            type: 'risk',
+            severity: 'high',
+            title: 'Significant Energy Access Issues',
+            description: `${criticalPct.toFixed(1)}% of areas show critical energy access challenges requiring attention.`,
+            confidence: 0.85,
+            dataPoints: [`Critical areas: ${criticalPct.toFixed(1)}%`]
+          });
+          riskLevel = 'high';
+          recommendations.push('Develop comprehensive energy access improvement plan');
+          recommendations.push('Focus on renewable energy and distributed power systems');
+        } else if (criticalPct > 5) {
+          insights.push({
+            type: 'trend',
+            severity: 'medium',
+            title: 'Moderate Energy Access Challenges',
+            description: `${criticalPct.toFixed(1)}% of areas show energy access limitations that need monitoring.`,
+            confidence: 0.8,
+            dataPoints: [`Critical areas: ${criticalPct.toFixed(1)}%`]
+          });
+          riskLevel = riskLevel === 'low' ? 'moderate' : riskLevel;
+          recommendations.push('Continue monitoring energy access and plan targeted improvements');
+        }
+
+        // Energy deprivation analysis
+        if (energyDeprivedPct > 20) {
+          insights.push({
+            type: 'risk',
+            severity: 'high',
+            title: 'High Energy Deprivation in Built Areas',
+            description: `${energyDeprivedPct.toFixed(1)}% of built-up areas show signs of energy deprivation based on nighttime lights analysis.`,
+            confidence: 0.8,
+            dataPoints: [`Energy deprived areas: ${energyDeprivedPct.toFixed(1)}%`]
+          });
+          recommendations.push('Focus on electrification of urban built-up areas with low nighttime lighting');
+        }
+
+        // Analysis coverage quality
+        if (analysisCoverage < 50) {
+          insights.push({
+            type: 'anomaly',
+            severity: 'medium',
+            title: 'Limited Analysis Coverage',
+            description: `Only ${analysisCoverage.toFixed(1)}% of the area could be analyzed due to data availability constraints.`,
+            confidence: 0.7,
+            dataPoints: [`Coverage: ${analysisCoverage.toFixed(1)}%`]
+          });
+          recommendations.push('Consider analyzing areas with more built-up development for better coverage');
+        }
+
+        keyMetrics.push({
+          label: 'Critical Energy Areas',
+          value: `${criticalPct.toFixed(1)}%`,
+          trend: criticalPct > 20 ? 'increasing' : 'stable',
+          significance: criticalPct > 15 ? 'negative' : criticalPct > 5 ? 'neutral' : 'positive'
+        });
+
+        keyMetrics.push({
+          label: 'Energy Deprived Built Areas',
+          value: `${energyDeprivedPct.toFixed(1)}%`,
+          trend: energyDeprivedPct > 15 ? 'increasing' : 'stable',
+          significance: energyDeprivedPct > 20 ? 'negative' : 'neutral'
+        });
+
+        summary = `Energy access analysis reveals ${criticalPct > 30 ? 'severe' : criticalPct > 15 ? 'significant' : criticalPct > 5 ? 'moderate' : 'minimal'} challenges with ${criticalPct.toFixed(1)}% of analyzed areas showing critical energy access limitations.`;
+      }
     }
 
     // Fallback for empty analysis
@@ -1819,7 +2203,7 @@ const EnhancedMapComponent = () => {
                   </div>
                 </div>
                 
-                {(heatData || airQualityData || populationData) && (
+                {(heatData || airQualityData || populationData || energyData) && (
                   <div className="text-sm text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full">
                     Data Loaded ✓
                   </div>
@@ -1898,10 +2282,22 @@ const EnhancedMapComponent = () => {
                 >
                   👥 Population
                 </button>
+                
+                <button
+                  onClick={() => setDataType('energy')}
+                  className={`px-4 py-2.5 rounded-md transition-colors text-base ${
+                    dataType === 'energy' 
+                      ? 'bg-orange-600 text-white' 
+                      : 'bg-white text-orange-600 border border-orange-600 hover:bg-orange-50'
+                  }`}
+                >
+                  🔋 Energy Analysis
+                </button>
               </div>
             </div>
 
-            {/* Year Slider */}
+            {/* Year Slider - Hidden for energy analysis */}
+            {dataType !== 'energy' && (
             <div className="mb-2 p-1.5 bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 rounded-lg border border-indigo-200 shadow-lg">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center space-x-1">
@@ -1961,6 +2357,7 @@ const EnhancedMapComponent = () => {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Action Buttons */}
             <div className="space-y-1 flex-1 flex flex-col justify-end">
@@ -1974,7 +2371,7 @@ const EnhancedMapComponent = () => {
               
               <button
                 onClick={removeAllOverlays}
-                disabled={!heatOverlay && !airQualityOverlay && !populationOverlay}
+                disabled={!heatOverlay && !airQualityOverlay && !populationOverlay && !energyOverlay}
                 className="w-full px-4 py-2.5 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-md hover:from-gray-600 hover:to-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow text-base"
               >
                 🧹 Clear All Layers
@@ -1989,19 +2386,19 @@ const EnhancedMapComponent = () => {
                     setShowStatistics(!showStatistics);
                   }
                 }}
-                disabled={(!heatOverlay && !airQualityOverlay && !populationOverlay) || statisticsLoading}
+                disabled={(!heatOverlay && !airQualityOverlay && !populationOverlay && !energyOverlay) || statisticsLoading}
                 className={`w-full px-4 py-2.5 ${showStatistics 
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700' 
                   : statisticsLoading
                   ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                  : (!heatOverlay && !airQualityOverlay && !populationOverlay)
+                  : (!heatOverlay && !airQualityOverlay && !populationOverlay && !energyOverlay)
                   ? 'bg-gray-400'
                   : 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600'
                 } text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow text-base`}
               >
                 {statisticsLoading 
                   ? '⏳ Loading Statistics...' 
-                  : (!heatOverlay && !airQualityOverlay && !populationOverlay)
+                  : (!heatOverlay && !airQualityOverlay && !populationOverlay && !energyOverlay)
                   ? '📊 Load Data First'
                   : showStatistics 
                   ? '📊 Hide Statistics' 
@@ -2117,8 +2514,9 @@ const EnhancedMapComponent = () => {
                 if (dataType === 'heat') removeHeatOverlay();
                 else if (dataType === 'airquality') removeAirQualityOverlay();
                 else if (dataType === 'population') removePopulationOverlay();
+                else if (dataType === 'energy') removeEnergyOverlay();
               }}
-              disabled={!heatOverlay && !airQualityOverlay && !populationOverlay}
+              disabled={!heatOverlay && !airQualityOverlay && !populationOverlay && !energyOverlay}
               className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
             >
               🗑️ Clear
@@ -2177,7 +2575,7 @@ const EnhancedMapComponent = () => {
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                    <span>Processing multi-year {dataType === 'heat' ? 'temperature' : dataType === 'airquality' ? 'air quality' : 'population'} data...</span>
+                    <span>Processing {dataType === 'energy' ? 'energy access' : dataType === 'heat' ? 'multi-year temperature' : dataType === 'airquality' ? 'multi-year air quality' : 'multi-year population'} data...</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
@@ -2218,11 +2616,33 @@ const EnhancedMapComponent = () => {
                   <h5 className="text-lg font-semibold text-gray-800 mb-4">
                     {dataType === 'heat' ? 'Temperature Trends' :
                      dataType === 'airquality' ? 'Pollution Levels Over Time' :
-                     'Population Growth Trends'}
+                     dataType === 'population' ? 'Population Growth Trends' :
+                     'Energy Access Analysis'}
                   </h5>
                   
                   <ResponsiveContainer width="100%" height={300}>
-                {dataType === 'population' ? (
+                {dataType === 'energy' ? (
+                  /* Energy Analysis Summary Display */
+                  <div className="h-full flex items-center justify-center bg-gradient-to-br from-orange-50 to-yellow-50 rounded-lg p-6">
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-gradient-to-r from-orange-400 to-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">🔋</span>
+                      </div>
+                      <div className="text-lg font-semibold text-gray-800 mb-2">Single-Year Analysis</div>
+                      <div className="text-sm text-gray-600 mb-4">Energy access analysis for 2024 (default)</div>
+                      <div className="grid grid-cols-2 gap-4 text-center">
+                        <div className="bg-white p-3 rounded-lg shadow-sm">
+                          <div className="text-xs text-gray-500 mb-1">Critical Areas</div>
+                          <div className="text-lg font-bold text-red-600">{energyData?.statistics?.criticalAreaPct?.toFixed(1) || 'N/A'}%</div>
+                        </div>
+                        <div className="bg-white p-3 rounded-lg shadow-sm">
+                          <div className="text-xs text-gray-500 mb-1">Energy Deprived</div>
+                          <div className="text-lg font-bold text-orange-600">{energyData?.statistics?.energyDeprivedPct?.toFixed(1) || 'N/A'}%</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : dataType === 'population' ? (
                   <BarChart data={statisticsData[dataType]?.yearlyData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="year" />
@@ -2289,7 +2709,8 @@ const EnhancedMapComponent = () => {
                     <div>
                       {dataType === 'heat' ? 'Temperature data shows urban heat island patterns and seasonal variations.' :
                        dataType === 'airquality' ? 'Air quality measurements from satellite data showing pollution concentrations.' :
-                       'Population density analysis from NASA SEDAC gridded population data.'}
+                       dataType === 'population' ? 'Population density analysis from NASA SEDAC gridded population data.' :
+                       'Energy access proxy analysis combining nighttime lights, built infrastructure, and land cover data.'}
                     </div>
                   </div>
                 </div>
@@ -2333,7 +2754,8 @@ const EnhancedMapComponent = () => {
                 Intelligent insights and risk assessment for {
                   dataType === 'heat' ? 'urban heat patterns' :
                   dataType === 'airquality' ? 'air quality conditions' :
-                  'population density patterns'
+                  dataType === 'population' ? 'population density patterns' :
+                  'energy access distribution'
                 }
               </p>
             </div>
@@ -2754,6 +3176,158 @@ const EnhancedMapComponent = () => {
                 <div className="text-sm font-medium text-green-800">Streamlined Mode Active</div>
                 <div className="text-xs text-green-600">
                   Showing population density layer for selected year only. Detailed statistics and analysis have been optimized for faster loading.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Energy Data Statistics - Enhanced Display */}
+      {energyData && energyData.success && energyData.imageUrl && (
+        <div className="mb-8 bg-gradient-to-br from-white via-orange-50 to-yellow-50 rounded-2xl shadow-2xl p-8 border border-orange-200">
+          <div className="flex items-center space-x-4 mb-8">
+            <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-yellow-500 rounded-2xl flex items-center justify-center shadow-lg">
+              <span className="text-2xl">🔋</span>
+            </div>
+            <div>
+              <h4 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-yellow-600 bg-clip-text text-transparent">
+                Energy Access Analysis Results
+              </h4>
+              <p className="text-gray-600 mt-1">Comprehensive energy access proxy analysis</p>
+            </div>
+          </div>
+          
+          {/* Energy Statistics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-gradient-to-br from-orange-50 to-amber-100 p-6 rounded-2xl border-2 border-orange-200 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-sm">📊</span>
+                </div>
+                <div className="text-xs font-medium text-orange-500 bg-orange-100 px-2 py-1 rounded-full">ANALYSIS</div>
+              </div>
+              <div className="text-sm font-medium text-orange-700 mb-2">Total Area</div>
+              <div className="text-3xl font-bold text-orange-600 mb-1">
+                {energyData.statistics?.totalAreaKm2?.toFixed(1) || 'N/A'} km²
+              </div>
+              <div className="text-xs text-orange-500">Geographic coverage</div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-red-50 to-pink-100 p-6 rounded-2xl border-2 border-red-200 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-red-500 to-red-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-sm">⚠️</span>
+                </div>
+                <div className="text-xs font-medium text-red-500 bg-red-100 px-2 py-1 rounded-full">CRITICAL</div>
+              </div>
+              <div className="text-sm font-medium text-red-700 mb-2">Critical Areas</div>
+              <div className="text-3xl font-bold text-red-600 mb-1">
+                {energyData.statistics?.criticalAreaPct?.toFixed(1) || 'N/A'}%
+              </div>
+              <div className="text-xs text-red-500">Limited energy access</div>
+            </div>
+            
+            <div className="bg-gradient-to-br from-yellow-50 to-amber-100 p-6 rounded-2xl border-2 border-yellow-200 shadow-lg">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 bg-gradient-to-r from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-sm">🏘️</span>
+                </div>
+                <div className="text-xs font-medium text-yellow-500 bg-yellow-100 px-2 py-1 rounded-full">BUILT-UP</div>
+              </div>
+              <div className="text-sm font-medium text-yellow-700 mb-2">Energy Deprived Areas</div>
+              <div className="text-3xl font-bold text-yellow-600 mb-1">
+                {energyData.statistics?.energyDeprivedPct?.toFixed(1) || 'N/A'}%
+              </div>
+              <div className="text-xs text-yellow-500">Of built areas</div>
+            </div>
+          </div>
+
+          {/* Color Palette Legend */}
+          <div className="mb-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-lg">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-green-500 rounded-lg flex items-center justify-center">
+                <span className="text-white text-sm">🎨</span>
+              </div>
+              <h5 className="text-lg font-bold text-gray-800">Energy Access Color Scale</h5>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-7 gap-2 mb-4">
+              <div className="flex flex-col items-center p-3 bg-green-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-green-400 to-green-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-green-700">Excellent</div>
+                <div className="text-xs text-green-600">High Access</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-lime-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-lime-400 to-lime-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-lime-700">Good</div>
+                <div className="text-xs text-lime-600">Adequate</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-yellow-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-yellow-700">Moderate</div>
+                <div className="text-xs text-yellow-600">Average</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-orange-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-orange-400 to-orange-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-orange-700">Concerning</div>
+                <div className="text-xs text-orange-600">Limited</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-red-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-red-400 to-red-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-red-700">Critical</div>
+                <div className="text-xs text-red-600">Very Limited</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-purple-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-purple-400 to-purple-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-purple-700">Severe</div>
+                <div className="text-xs text-purple-600">Minimal</div>
+              </div>
+              <div className="flex flex-col items-center p-3 bg-gray-100 rounded-lg border">
+                <div className="w-8 h-8 bg-gradient-to-r from-gray-400 to-gray-500 rounded mb-2"></div>
+                <div className="text-xs font-medium text-gray-700">No Data</div>
+                <div className="text-xs text-gray-600">Unanalyzed</div>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              <strong>Color Scale:</strong> Green indicates excellent energy access with high nighttime lighting and infrastructure. 
+              Red/Purple areas show critical energy access limitations. The scale is based on Energy Access Proxy (EAP) 
+              combining built infrastructure density with nighttime lights analysis.
+            </div>
+          </div>
+
+          {/* Layer Information */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="text-sm font-medium text-gray-700 mb-2">Layer Type</div>
+              <div className="text-lg font-semibold text-gray-800 capitalize">
+                {energyData.layerType || 'Energy Access'}
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="text-sm font-medium text-gray-700 mb-2">Data Source</div>
+              <div className="text-lg font-semibold text-gray-800">
+                {energyData.metadata?.dataSource || 'VIIRS+GHSL+GSW'}
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="text-sm font-medium text-gray-700 mb-2">Resolution</div>
+              <div className="text-lg font-semibold text-gray-800">
+                {energyData.metadata?.resolution || '250m'}
+              </div>
+            </div>
+          </div>
+
+          {/* Analysis Notice */}
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-8">
+            <div className="flex items-center">
+              <div className="text-orange-500 mr-3">ℹ️</div>
+              <div>
+                <div className="text-sm font-medium text-orange-800">Default Year Analysis (2024)</div>
+                <div className="text-xs text-orange-600">
+                  Energy access analysis uses the latest available data for 2024. The analysis combines nighttime lights (VIIRS), 
+                  built surface data (GHSL), and water masks (JRC GSW) to estimate energy access proxy across urban areas.
                 </div>
               </div>
             </div>

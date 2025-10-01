@@ -11,6 +11,7 @@ require('dotenv').config();
 const heatRoutes = require('./routes/heatRoutes');
 const airQualityRoutes = require('./routes/airQualityRoutes');
 const populationRoutes = require('./routes/populationRoutes');
+const energyRoutes = require('./routes/energyRoutes');
 
 // Import GEE services for initialization
 const geeService = require('./services/geeService');
@@ -66,6 +67,7 @@ app.get('/health', (req, res) => {
 app.use('/api/heat', heatRoutes);
 app.use('/api/airquality', airQualityRoutes);
 app.use('/api/population', populationRoutes);
+app.use('/api/energy', energyRoutes);
 
 // API documentation endpoint
 app.get('/api', (req, res) => {
@@ -80,13 +82,17 @@ app.get('/api', (req, res) => {
       airQuality: '/api/airquality',
       airQualityInfo: '/api/airquality/info',
       population: '/api/population',
-      populationInfo: '/api/population/info'
+      populationInfo: '/api/population/info',
+      energy: '/api/energy',
+      energyInfo: '/api/energy/info'
     },
     documentation: {
       heatEndpoint: 'GET /api/heat?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
       airQualityEndpoint: 'GET /api/airquality?bounds=west,south,east,north&startDate=YYYY-MM-DD&endDate=YYYY-MM-DD',
       populationEndpoint: 'GET /api/population?bounds=west,south,east,north&year=YYYY',
-      exampleRequest: '/api/heat?bounds=-74.1,40.6,-73.9,40.8&startDate=2024-01-01&endDate=2024-08-01'
+      energyEndpoint: 'GET /api/energy?bounds=west,south,east,north&year=YYYY',
+      exampleRequest: '/api/heat?bounds=-74.1,40.6,-73.9,40.8&startDate=2024-01-01&endDate=2024-08-01',
+      exampleEnergyRequest: '/api/energy?bounds=-74.1,40.6,-73.9,40.8&year=2024'
     },
     timestamp: new Date().toISOString()
   });
@@ -151,8 +157,9 @@ const startServer = async () => {
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
       console.log(`🌡️ Heat API: http://localhost:${PORT}/api/heat`);
       console.log(`🌬️ Air Quality API: http://localhost:${PORT}/api/airquality`);
-      console.log(`� Population API: http://localhost:${PORT}/api/population`);
-      console.log(`�📋 API Documentation: http://localhost:${PORT}/api`);
+      console.log(`👥 Population API: http://localhost:${PORT}/api/population`);
+      console.log(`⚡ Energy API: http://localhost:${PORT}/api/energy`);
+      console.log(`📋 API Documentation: http://localhost:${PORT}/api`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
