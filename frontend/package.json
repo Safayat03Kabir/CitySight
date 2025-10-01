@@ -1,10 +1,8 @@
 {
   "name": "frontend",
   "version": "0.1.0",
-    
-  "engines": { "node": "20.x" },
-
   "private": true,
+  "engines": { "node": "20.x" },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -23,7 +21,6 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.1.2"
   },
-  
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.12",
@@ -34,6 +31,5 @@
     "eslint-config-next": "15.5.2",
     "tailwindcss": "^4.1.12",
     "typescript": "5.9.2"
-  },
-
+  }
 }
