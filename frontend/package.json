@@ -1,6 +1,9 @@
 {
   "name": "frontend",
   "version": "0.1.0",
+    
+  "engines": { "node": "20.x" },
+
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -32,7 +35,5 @@
     "tailwindcss": "^4.1.12",
     "typescript": "5.9.2"
   },
-  {
-  "engines": { "node": "20.x" }
-}
+
 }
