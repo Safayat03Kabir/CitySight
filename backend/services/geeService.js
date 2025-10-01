@@ -1089,6 +1089,7 @@ class GEEService {
       const analyzableBand = analysisMask.multiply(km2).rename('analyzable');
       const criticalBand = scoreForQuantiles.gte(finalQ80).and(analysisMask).multiply(km2).rename('critical');
       const nearBand = scoreForQuantiles.gte(finalQ60).and(scoreForQuantiles.lt(finalQ80)).and(analysisMask).multiply(km2).rename('near');
+      const concerningBand = scoreForQuantiles.gte(finalQ40).and(scoreForQuantiles.lt(finalQ60)).and(analysisMask).multiply(km2).rename('concerning');
       
       // Severity bands (5 classes)
       const sev0Band = severity.eq(0).and(analysisMask).multiply(km2).rename('sev0');
@@ -1107,7 +1108,7 @@ class GEEService {
       
       // Combine all bands for single reduction
       const areaBands = ee.Image.cat([
-        analyzableBand, criticalBand, nearBand,
+        analyzableBand, criticalBand, nearBand, concerningBand,
         sev0Band, sev1Band, sev2Band, sev3Band, sev4Band,
         deprivedBand
       ]);
@@ -1130,7 +1131,8 @@ class GEEService {
       const actualAnalyzableKm2 = areaResults.analyzable || 0;
       const criticalKm2 = areaResults.critical || 0;
       const nearKm2 = areaResults.near || 0;
-      const normalKm2 = Math.max(0, actualAnalyzableKm2 - criticalKm2 - nearKm2);
+      const concerningKm2 = areaResults.concerning || 0;
+      const normalKm2 = Math.max(0, actualAnalyzableKm2 - criticalKm2 - nearKm2 - concerningKm2);
       
       const sevAreasKm2 = {
         0: areaResults.sev0 || 0,
@@ -1190,8 +1192,10 @@ class GEEService {
           criticalAreaPct: pct(criticalKm2),
           nearCriticalAreaKm2: +nearKm2.toFixed(1),
           nearCriticalAreaPct: pct(nearKm2),
+          concerningAreaKm2: +concerningKm2.toFixed(1),
+          concerningAreaPct: pct(concerningKm2),
           normalAreasKm2: +normalKm2.toFixed(1),
-          normalAreasPct: +(100 - pct(criticalKm2) - pct(nearKm2)).toFixed(1),
+          normalAreasPct: +(100 - pct(criticalKm2) - pct(nearKm2) - pct(concerningKm2)).toFixed(1),
           // Cross-city comparison metric
           energyDeprivedPct: +deprivedPct.toFixed(2),
           energyDeprivedKm2: +deprivedKm2.toFixed(2),
@@ -1201,6 +1205,8 @@ class GEEService {
           // Additional legacy fields for compatibility
           totalCriticalAndNearKm2: +(criticalKm2 + nearKm2).toFixed(1),
           totalCriticalAndNearPct: +(pct(criticalKm2) + pct(nearKm2)).toFixed(1),
+          totalConcerningAndAboveKm2: +(criticalKm2 + nearKm2 + concerningKm2).toFixed(1),
+          totalConcerningAndAbovePct: +(pct(criticalKm2) + pct(nearKm2) + pct(concerningKm2)).toFixed(1),
 
           // 5-class severity (area-based)
           areaBreakdown: {
