@@ -20,7 +20,7 @@ class GEEService {
     return new Promise((resolve, reject) => {
       try {
         // Path to service account JSON file
-        const serviceAccountPath = process.env.GEE_SERVICE_ACCOUNT_PATH || './config/gee-service-account.json';
+        const serviceAccountPath = process.env.GEE_SERVICE_ACCOUNT_PATH;
         
         if (!require('fs').existsSync(serviceAccountPath)) {
           throw new Error(`GEE service account file not found at: ${serviceAccountPath}`);
