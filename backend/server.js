@@ -18,6 +18,9 @@ const geeService = require('./services/geeService');
 const airQualityService = require('./services/airQualityService');
 
 const app = express();
+// near the top, after creating app
+app.set('trust proxy', 1); // so rateLimit sees the real client IP behind a proxy
+
 const PORT = process.env.PORT || 5001;
 
 // Security middleware
