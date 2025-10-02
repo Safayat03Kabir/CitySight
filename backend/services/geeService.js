@@ -20,13 +20,17 @@ class GEEService {
     return new Promise((resolve, reject) => {
       try {
         // Path to service account JSON file
-        const serviceAccountPath = process.env.GEE_SERVICE_ACCOUNT_PATH;
-        
-        if (!require('fs').existsSync(serviceAccountPath)) {
-          throw new Error(`GEE service account file not found at: ${serviceAccountPath}`);
+        const keyJson = process.env.GEE_SERVICE_ACCOUNT_PATH;
+        if (!keyJson) {
+          return reject(new Error('❌ Missing GEE_SERVICE_ACCOUNT_PATH env var'));
         }
 
-        const serviceAccount = require(path.resolve(serviceAccountPath));
+        let serviceAccount;
+        try {
+          serviceAccount = JSON.parse(keyJson); // parse the JSON string
+        } catch (e) {
+          return reject(new Error('❌ Failed to parse GEE_SERVICE_ACCOUNT_PATH as JSON'));
+        }
         
         ee.data.authenticateViaPrivateKey(
           serviceAccount,
