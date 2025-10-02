@@ -20,7 +20,7 @@ class AirQualityService {
     return new Promise((resolve, reject) => {
       try {
         // Path to service account JSON file
-        const serviceAccountPath = process.env.GEE_SERVICE_ACCOUNT_PATH || './config/gee-service-account.json';
+        const serviceAccountPath = process.env.GEE_SERVICE_ACCOUNT_PATH;
         
         if (!require('fs').existsSync(serviceAccountPath)) {
           reject(new Error(`Service account file not found: ${serviceAccountPath}`));
