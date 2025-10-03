@@ -185,7 +185,7 @@ export default function Features() {
         {/* Header */}
         <div className={`text-center mb-16 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
           <h1 className="text-4xl font-bold text-gray-800 mb-6 animate-fadeInUp">
-            CitySight: NASA Space Apps Challenge 2024
+            CitySight: NASA Space Apps Challenge 2025
           </h1>
           <div className="inline-flex items-center bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-full mb-6">
             🚀 <span className="ml-2 font-semibold">NASA Space Apps Challenge Entry</span>
